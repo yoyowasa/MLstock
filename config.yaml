@@ -1,0 +1,18 @@
+project:
+  timezone: "America/New_York"
+  start_date: "2016-01-01"
+
+alpaca:
+  data_base_url: "https://data.alpaca.markets"
+
+paths:
+  data_dir: "data"
+  artifacts_dir: "artifacts"
+
+reference:
+  assets_path: "data/reference/assets.parquet"
+  calendar_path: "data/reference/calendar.parquet"
+
+logging:
+  level: "INFO"
+  jsonl: true

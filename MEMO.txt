@@ -1,0 +1,2 @@
+cd E:\MLStock
+.\.venv\Scripts\Activate.ps1

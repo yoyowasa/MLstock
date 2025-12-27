@@ -1,0 +1,15 @@
+# local secrets
+.env
+config.local.yaml
+
+# data outputs
+/data/
+/artifacts/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
