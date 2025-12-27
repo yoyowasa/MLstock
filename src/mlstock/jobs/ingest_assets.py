@@ -80,11 +80,7 @@ def run(cfg: AppConfig) -> pd.DataFrame:
         if column not in df.columns:
             df[column] = None
 
-    df = df[
-        (df["status"] == "active")
-        & (df["asset_class"] == "us_equity")
-        & (df["tradable"].fillna(False))
-    ]
+    df = df[(df["status"] == "active") & (df["asset_class"] == "us_equity") & (df["tradable"].fillna(False))]
 
     if "symbol" in df.columns:
         df = df[df["symbol"].notna()]

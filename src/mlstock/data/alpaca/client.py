@@ -68,18 +68,14 @@ class AlpacaClient:
                 last_error = exc
             else:
                 if response.status_code in (429,) or 500 <= response.status_code < 600:
-                    last_error = RuntimeError(
-                        f"Transient Alpaca error: {response.status_code}"
-                    )
+                    last_error = RuntimeError(f"Transient Alpaca error: {response.status_code}")
                 elif not response.ok:
-                    raise RuntimeError(
-                        f"Alpaca error {response.status_code}: {response.text}"
-                    )
+                    raise RuntimeError(f"Alpaca error {response.status_code}: {response.text}")
                 else:
                     return response.json()
 
             if attempt < self.max_retries:
-                sleep_for = self.backoff_seconds * (2 ** attempt)
+                sleep_for = self.backoff_seconds * (2**attempt)
                 time.sleep(sleep_for)
 
         if last_error:

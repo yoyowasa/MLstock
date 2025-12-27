@@ -25,9 +25,7 @@ CALENDAR_COLUMNS = [
 
 
 def _parse_datetime_local(date_str: str, time_str: str, tz: ZoneInfo) -> datetime:
-    return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(
-        tzinfo=tz
-    )
+    return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
 
 
 def _normalize_calendar(
@@ -43,13 +41,9 @@ def _normalize_calendar(
         open_ts_utc = None
         close_ts_utc = None
         if date_str and open_str:
-            open_ts_utc = _parse_datetime_local(date_str, open_str, tz).astimezone(
-                timezone.utc
-            )
+            open_ts_utc = _parse_datetime_local(date_str, open_str, tz).astimezone(timezone.utc)
         if date_str and close_str:
-            close_ts_utc = _parse_datetime_local(date_str, close_str, tz).astimezone(
-                timezone.utc
-            )
+            close_ts_utc = _parse_datetime_local(date_str, close_str, tz).astimezone(timezone.utc)
         rows.append(
             {
                 "date": date.fromisoformat(date_str) if date_str else None,

@@ -56,9 +56,7 @@ def validate_assets_df(df: pd.DataFrame) -> Dict[str, Any]:
             errors.append(f"Duplicate symbols: {dupes}")
 
     if "tradable" in df.columns:
-        non_bool = df["tradable"].dropna().apply(
-            lambda value: isinstance(value, (bool, np.bool_))
-        )
+        non_bool = df["tradable"].dropna().apply(lambda value: isinstance(value, (bool, np.bool_)))
         if not non_bool.all():
             errors.append("tradable contains non-bool values")
 

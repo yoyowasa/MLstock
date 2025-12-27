@@ -44,11 +44,7 @@ class JsonlFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        extras = {
-            key: value
-            for key, value in record.__dict__.items()
-            if key not in _LOG_RECORD_KEYS
-        }
+        extras = {key: value for key, value in record.__dict__.items() if key not in _LOG_RECORD_KEYS}
         if extras:
             payload.update(extras)
         return json.dumps(payload, ensure_ascii=True, default=str)
