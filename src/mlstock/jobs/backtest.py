@@ -612,7 +612,6 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
         ]
         top_share_by_week[csv_cols].to_csv(backtest_dir / "top_share_by_week.csv", index=False)
 
-    nav_series = nav_df["nav"] if not nav_df.empty else pd.Series(dtype=float)
     cash_series = nav_df["cash_usd"] if "cash_usd" in nav_df.columns else pd.Series(dtype=float)
     cash_minus_reserve_series = (
         nav_df["cash_minus_reserve"] if "cash_minus_reserve" in nav_df.columns else pd.Series(dtype=float)
