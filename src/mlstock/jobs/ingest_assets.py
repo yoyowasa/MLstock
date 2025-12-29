@@ -58,7 +58,7 @@ def run(cfg: AppConfig) -> pd.DataFrame:
 
     log_event(logger, "start")
 
-    client = AlpacaClient.from_env(cfg.alpaca.data_base_url)
+    client = AlpacaClient.from_env(cfg.alpaca.trading_base_url)
     fetched_at = datetime.now(timezone.utc)
 
     all_frames = []
@@ -80,10 +80,23 @@ def run(cfg: AppConfig) -> pd.DataFrame:
         if column not in df.columns:
             df[column] = None
 
-    df = df[(df["status"] == "active") & (df["asset_class"] == "us_equity") & (df["tradable"].fillna(False))]
-
     if "symbol" in df.columns:
         df = df[df["symbol"].notna()]
+
+    if "status" in df.columns and df["status"].notna().any():
+        df = df[df["status"] == "active"]
+    else:
+        log_event(logger, "missing_status_column")
+
+    if "asset_class" in df.columns and df["asset_class"].notna().any():
+        df = df[df["asset_class"] == "us_equity"]
+    else:
+        log_event(logger, "missing_asset_class_column")
+
+    if "tradable" in df.columns and df["tradable"].notna().any():
+        df = df[df["tradable"].fillna(False)]
+    else:
+        log_event(logger, "missing_tradable_column")
 
     duplicate_count = df["symbol"].duplicated().sum()
     if duplicate_count:

@@ -101,3 +101,50 @@ class AlpacaClient:
             "end": end,
         }
         return self._request("GET", endpoints.CALENDAR, params=params)
+
+    def get_bars(
+        self,
+        symbols: list[str],
+        start: str,
+        end: str,
+        timeframe: str,
+        feed: str,
+        adjustment: str,
+        asof: Optional[str] = None,
+        limit: int = 10000,
+        page_token: Optional[str] = None,
+    ) -> Any:
+        params: Dict[str, Any] = {
+            "symbols": ",".join(symbols),
+            "start": start,
+            "end": end,
+            "timeframe": timeframe,
+            "feed": feed,
+            "adjustment": adjustment,
+            "limit": limit,
+        }
+        if asof is not None:
+            params["asof"] = asof
+        if page_token:
+            params["page_token"] = page_token
+        return self._request("GET", endpoints.BARS, params=params)
+
+    def get_corporate_actions(
+        self,
+        symbols: list[str],
+        types: str,
+        start: str,
+        end: str,
+        limit: int = 1000,
+        page_token: Optional[str] = None,
+    ) -> Any:
+        params: Dict[str, Any] = {
+            "symbols": ",".join(symbols),
+            "types": types,
+            "start": start,
+            "end": end,
+            "limit": limit,
+        }
+        if page_token:
+            params["page_token"] = page_token
+        return self._request("GET", endpoints.CORPORATE_ACTIONS, params=params)

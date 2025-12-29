@@ -12,7 +12,7 @@ from mlstock.config.schema import AppConfig
 def find_project_root(start_path: Optional[Path] = None) -> Path:
     start = (start_path or Path.cwd()).resolve()
     for path in [start] + list(start.parents):
-        if (path / "config.yaml").exists():
+        if (path / "config.yaml").exists() or (path / "config" / "config.yaml").exists():
             return path
     raise FileNotFoundError("Could not find config.yaml in parent directories")
 
@@ -44,12 +44,13 @@ def load_config(
         root = config_path.parent
     else:
         root = find_project_root()
-        config_path = root / "config.yaml"
+        nested_config = root / "config" / "config.yaml"
+        config_path = nested_config if nested_config.exists() else root / "config.yaml"
 
     if local_path is not None:
         local_path = Path(local_path)
     else:
-        local_path = root / "config.local.yaml"
+        local_path = config_path.with_name("config.local.yaml")
 
     load_dotenv(root / ".env", override=False)
 

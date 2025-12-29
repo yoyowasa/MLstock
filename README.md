@@ -1,6 +1,6 @@
 # MLStock
 
-Reference data ingestion for Alpaca assets and market calendar.
+Weekly US equity MVP pipeline: Monday open entry, hold one week, exit next Monday open.
 
 ## Setup
 
@@ -10,23 +10,102 @@ Reference data ingestion for Alpaca assets and market calendar.
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -e .
 ```
 
-2) Copy `.env.example` to `.env` and set your Alpaca keys.
+2) Set Alpaca API keys:
 
-3) Review `config.yaml` (override with `config.local.yaml` if needed).
+```powershell
+$env:APCA_API_KEY_ID="YOUR_KEY_ID"
+$env:APCA_API_SECRET_KEY="YOUR_SECRET"
+```
 
-## Run
+3) Review configuration:
+
+- `config/config.yaml` (preferred)
+- `config.yaml` (fallback)
+
+## Workflow
+
+1) Reference data (assets + calendar):
 
 ```bash
-python scripts/run_ingest_assets.py
-python scripts/run_ingest_calendar.py
-python scripts/run_validate_reference.py
+python scripts\run_setup_reference.py
 ```
 
 Outputs:
 - `data/reference/assets.parquet`
 - `data/reference/calendar.parquet`
-- Logs in `artifacts/logs/`
-- Validation report in `artifacts/validate/`
-# MLstock
+
+2) Seed symbols (default 2000):
+
+```bash
+python -m mlstock make-seed --n-seed 2000
+```
+
+Outputs:
+- `data/reference/seed_symbols.parquet`
+
+3) Initial backfill (daily bars + corporate actions):
+
+```bash
+python scripts\run_backfill_raw.py
+```
+
+Outputs:
+- `data/raw/bars_daily/{SYMBOL}.parquet`
+- `data/raw/corp_actions/corp_actions.parquet`
+
+4) Weekly snapshots (week map, universe, features, labels):
+
+```bash
+python scripts\run_build_snapshots.py
+```
+
+Outputs:
+- `data/snapshots/weekly/week_map.parquet`
+- `data/snapshots/weekly/universe.parquet`
+- `data/snapshots/weekly/features.parquet`
+- `data/snapshots/weekly/labels.parquet`
+
+5) Backtest (walk-forward, same logic as weekly run):
+
+```bash
+.\scripts\run_backtest.ps1 --start 2018-01-01 --end 2024-12-31
+```
+
+Outputs:
+- `artifacts/backtest/summary.json`
+- `artifacts/backtest/trades.parquet`
+- `artifacts/backtest/nav.parquet`
+
+6) Weekly run (incremental update -> snapshots -> train -> predict -> orders):
+
+```bash
+.\scripts\run_weekly.ps1
+```
+
+Outputs:
+- `artifacts/orders/orders_YYYYMMDD.csv`
+- `artifacts/orders/orders_candidates_YYYYMMDD.csv`
+- `artifacts/orders/selection_YYYYMMDD.json`
+- `artifacts/models/model_YYYYMMDD.joblib`
+- `artifacts/models/pred_YYYYMMDD.parquet`
+- `artifacts/state/portfolio.json`
+
+## Key Config Knobs
+
+- `project.start_date`: reference calendar start
+- `bars.backfill_start`, `corp_actions.backfill_start`: backfill range
+- `seed.n_seed`: seed symbol count
+- `bars.feed`: `iex` or `sip`
+- `bars.asof`: set to `-` to disable symbol mapping on renamed tickers
+- `bars.mode`: `multi_symbol` recommended
+- `bars.max_workers`, `bars.batch_size`: API load/throughput
+- `corp_actions.lookback_days`: recommended 120 for weekly refresh
+- `corp_actions.max_workers`, `corp_actions.batch_size`: rate-limit tuning
+- `snapshots.min_avg_dollar_vol_20d`: liquidity filter
+- `selection.cash_start_usd`, `selection.cash_reserve_usd`: $1000 cash and reserve
+- `selection.price_cap`, `selection.max_positions`: position sizing limits
+- `selection.buy_fill_policy`, `selection.estimate_entry_buffer_bps`: weekly order budgeting
+- `cost_model.bps_per_side`: backtest transaction cost

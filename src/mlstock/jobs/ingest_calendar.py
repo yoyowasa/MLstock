@@ -67,7 +67,7 @@ def run(cfg: AppConfig) -> pd.DataFrame:
     start_date = date.fromisoformat(cfg.project.start_date)
     end_date = datetime.now(tz).date()
 
-    client = AlpacaClient.from_env(cfg.alpaca.data_base_url)
+    client = AlpacaClient.from_env(cfg.alpaca.trading_base_url)
     records = client.get_calendar(start=start_date.isoformat(), end=end_date.isoformat())
     log_event(logger, "fetched", count=len(records), start=str(start_date), end=str(end_date))
 
