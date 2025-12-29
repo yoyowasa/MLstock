@@ -34,7 +34,6 @@ def _maybe_float(value: object) -> Optional[float]:
     return float(value)
 
 
-
 def _maybe_int(value: object) -> Optional[int]:
     if value is None or pd.isna(value):
         return None
@@ -230,9 +229,9 @@ def _build_top_share_profile(
     if not trades_df.empty and "pnl" in trades_df.columns:
         pnl_by_symbol = trades_df.groupby(["week_start", "symbol"], as_index=False)["pnl"].sum()
 
-    week_groups = {
-        week: group["pnl"] for week, group in pnl_by_symbol.groupby("week_start")
-    } if not pnl_by_symbol.empty else {}
+    week_groups = (
+        {week: group["pnl"] for week, group in pnl_by_symbol.groupby("week_start")} if not pnl_by_symbol.empty else {}
+    )
 
     rows: List[Dict[str, object]] = []
     for row in nav_df.itertuples(index=False):
@@ -285,11 +284,7 @@ def _build_top_share_profile(
     top1_series = by_week["top1_share_gross"]
     top5_series = by_week["top5_share_gross"]
 
-    ranked = (
-        by_week.dropna(subset=["top5_share_gross"])
-        .sort_values("top5_share_gross", ascending=False)
-        .head(10)
-    )
+    ranked = by_week.dropna(subset=["top5_share_gross"]).sort_values("top5_share_gross", ascending=False).head(10)
     top_weeks: List[Dict[str, object]] = []
     for row in ranked.itertuples(index=False):
         top_weeks.append(
@@ -625,7 +620,9 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "min_cash_usd": float(cash_series.min()) if not cash_series.empty else None,
-        "min_cash_minus_reserve": float(cash_minus_reserve_series.min()) if not cash_minus_reserve_series.empty else None,
+        "min_cash_minus_reserve": (
+            float(cash_minus_reserve_series.min()) if not cash_minus_reserve_series.empty else None
+        ),
         "reserve_violation_count": int(reserve_violations),
         "skipped_buys_insufficient_cash": int(skipped_buys),
         "avg_cash_ratio": float(sum(cash_ratios) / len(cash_ratios)) if cash_ratios else None,

@@ -71,8 +71,7 @@ def _build_daily_gate(
     missing_weeks = int((~valid).sum())
 
     open_by_week = {
-        row.week_start: bool(open_flag)
-        for row, open_flag in zip(merged.itertuples(index=False), gate_open.tolist())
+        row.week_start: bool(open_flag) for row, open_flag in zip(merged.itertuples(index=False), gate_open.tolist())
     }
     return open_by_week, missing_weeks
 
@@ -101,8 +100,7 @@ def _build_weekly_gate(
     missing_weeks = int((~valid).sum())
 
     open_by_week = {
-        row.week_start: bool(open_flag)
-        for row, open_flag in zip(merged.itertuples(index=False), gate_open.tolist())
+        row.week_start: bool(open_flag) for row, open_flag in zip(merged.itertuples(index=False), gate_open.tolist())
     }
     return open_by_week, missing_weeks
 

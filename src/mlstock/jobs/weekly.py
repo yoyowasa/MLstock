@@ -122,9 +122,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     if week_all.empty:
         raise ValueError("No current-week features available")
 
-    week_features = week_all[
-        week_all["avg_dollar_vol_20d"].fillna(0) >= float(cfg.snapshots.min_avg_dollar_vol_20d)
-    ]
+    week_features = week_all[week_all["avg_dollar_vol_20d"].fillna(0) >= float(cfg.snapshots.min_avg_dollar_vol_20d)]
     week_features = week_features.dropna(subset=FEATURE_COLUMNS)
     week_features = week_features[week_features["price"].notna()]
     week_features = week_features[week_features["price"] <= float(cfg.selection.price_cap)]

@@ -165,9 +165,7 @@ def backfill(cfg: AppConfig, symbols: Optional[List[str]] = None) -> None:
     frames: List[pd.DataFrame] = []
     if max_workers > 1 and len(symbols) > batch_size:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(_ingest_batch, cfg, batch, start, end) for batch in _chunk(symbols, batch_size)
-            ]
+            futures = [executor.submit(_ingest_batch, cfg, batch, start, end) for batch in _chunk(symbols, batch_size)]
             for future in as_completed(futures):
                 df = future.result()
                 frames.append(df)
@@ -211,9 +209,7 @@ def incremental_update(cfg: AppConfig, symbols: Optional[List[str]] = None) -> N
     frames: List[pd.DataFrame] = []
     if max_workers > 1 and len(symbols) > batch_size:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(_ingest_batch, cfg, batch, start, end) for batch in _chunk(symbols, batch_size)
-            ]
+            futures = [executor.submit(_ingest_batch, cfg, batch, start, end) for batch in _chunk(symbols, batch_size)]
             for future in as_completed(futures):
                 df = future.result()
                 frames.append(df)

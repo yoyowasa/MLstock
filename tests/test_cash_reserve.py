@@ -195,9 +195,7 @@ def test_weekly_orders_budgeted(tmp_path: Path) -> None:
     weekly.run(cfg)
 
     orders_path = artifacts_dir / "orders"
-    orders_files = sorted(
-        path for path in orders_path.glob("orders_*.csv") if "orders_candidates" not in path.name
-    )
+    orders_files = sorted(path for path in orders_path.glob("orders_*.csv") if "orders_candidates" not in path.name)
     assert orders_files
 
     orders_df = pd.read_csv(orders_files[-1])

@@ -50,6 +50,7 @@ def _get_str_list(mapping: Dict[str, Any], key: str, path: str) -> List[str]:
         raise ValueError(f"Config key must be list of strings: {full_key}")
     return list(value)
 
+
 @dataclass(frozen=True)
 class ProjectConfig:
     timezone: str
