@@ -67,6 +67,8 @@ selection:
   max_positions: 15
   buy_fill_policy: \"ranked_partial\"
   estimate_entry_buffer_bps: 100
+  min_proba_buy: 0.0
+  min_proba_keep: 0.0
 
 cost_model:
   bps_per_side: 2.0
@@ -79,6 +81,23 @@ risk:
     spy_symbol: \"SPY\"
     ma_days: 60
     pred_return_floor: 0.0
+  vol_cap:
+    enabled: false
+    rank_threshold: 0.8
+    apply_stage: \"selection\"
+    feature_name: \"vol_4w\"
+    mode: \"hard\"
+    penalty_min: 0.5
+  exposure_guard:
+    enabled: false
+    trigger: \"vol_cap_enabled\"
+    mode: \"daily\"
+    base_source: \"off_avg_on_avg\"
+    base_scale: null
+    cap_source: \"off_p95\"
+    cap_value: null
+    cap_buffer: 0.0
+    log_scale: true
 
 backtest:
   start_date: \"2018-01-01\"

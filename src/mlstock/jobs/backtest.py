@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
@@ -18,6 +18,7 @@ from mlstock.logging.logger import build_log_path, log_event, setup_logger
 from mlstock.model.features import FEATURE_COLUMNS
 from mlstock.model.train import predict_linear_model, select_training_weeks, train_linear_model
 from mlstock.risk.regime import build_spy_regime_gate
+from mlstock.risk.vol_cap import apply_vol_cap, apply_vol_penalty
 
 
 def _to_date(series: pd.Series) -> pd.Series:
@@ -364,6 +365,94 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
             missing_weeks=gate_result.missing_weeks,
         )
 
+    vol_cap_cfg = cfg.risk.vol_cap
+    vol_cap_enabled = vol_cap_cfg.enabled
+    vol_cap_stage = vol_cap_cfg.apply_stage.strip().lower()
+    vol_cap_mode = vol_cap_cfg.mode.strip().lower()
+    vol_cap_penalty_min = float(vol_cap_cfg.penalty_min)
+    vol_cap_soft = vol_cap_mode in ("soft", "soft_penalty", "penalty")
+    vol_cap_apply_to_selection = False
+    vol_cap_apply_to_training = False
+    vol_cap_hold_buffer = 0.0
+    vol_cap_hold_threshold = min(1.0, float(vol_cap_cfg.rank_threshold) + vol_cap_hold_buffer)
+    if vol_cap_enabled:
+        if vol_cap_mode not in ("hard", "soft", "soft_penalty", "penalty"):
+            log_event(logger, "unknown_vol_cap_mode", value=vol_cap_cfg.mode)
+            vol_cap_enabled = False
+        if vol_cap_stage == "selection":
+            vol_cap_apply_to_selection = True
+        elif vol_cap_stage == "training":
+            vol_cap_apply_to_training = True
+        elif vol_cap_stage in ("training+selection", "training_and_selection", "training_selection", "both"):
+            vol_cap_apply_to_training = True
+            vol_cap_apply_to_selection = True
+        else:
+            log_event(logger, "unknown_vol_cap_stage", value=vol_cap_cfg.apply_stage)
+            vol_cap_enabled = False
+    if vol_cap_enabled and not (0.0 < vol_cap_penalty_min <= 1.0):
+        log_event(logger, "vol_cap_penalty_min_invalid", value=vol_cap_penalty_min)
+        vol_cap_penalty_min = 1.0
+
+    guard_cfg = cfg.risk.exposure_guard
+    guard_enabled = guard_cfg.enabled
+    guard_active = False
+    guard_base_scale = 1.0
+    guard_cap_enabled = False
+    gross_cap = None
+    if guard_enabled:
+        if guard_cfg.trigger == "vol_cap_enabled":
+            guard_active = vol_cap_enabled
+        elif guard_cfg.trigger == "always":
+            guard_active = True
+        else:
+            log_event(logger, "unknown_exposure_guard_trigger", value=guard_cfg.trigger)
+            guard_enabled = False
+    if guard_enabled and guard_active:
+        if guard_cfg.mode not in ("daily", "weekly_aligned"):
+            log_event(logger, "unknown_exposure_guard_mode", value=guard_cfg.mode)
+            guard_enabled = False
+            guard_active = False
+        if guard_cfg.base_source not in ("off_avg_on_avg", "fixed", "none"):
+            log_event(logger, "unknown_exposure_guard_base_source", value=guard_cfg.base_source)
+            guard_enabled = False
+            guard_active = False
+        if guard_cfg.cap_source not in ("off_p95", "off_avg", "fixed", "none"):
+            log_event(logger, "unknown_exposure_guard_cap_source", value=guard_cfg.cap_source)
+            guard_enabled = False
+            guard_active = False
+        if guard_active:
+            if guard_cfg.base_source == "none":
+                guard_base_scale = 1.0
+            elif guard_cfg.base_scale is None:
+                log_event(logger, "exposure_guard_base_scale_missing", source=guard_cfg.base_source)
+                guard_base_scale = 1.0
+            else:
+                guard_base_scale = float(guard_cfg.base_scale)
+                if guard_base_scale <= 0:
+                    log_event(logger, "exposure_guard_base_scale_invalid", value=guard_base_scale)
+                    guard_base_scale = 1.0
+                elif guard_base_scale > 1.0:
+                    log_event(logger, "exposure_guard_base_scale_capped", value=guard_base_scale)
+                    guard_base_scale = 1.0
+
+            if guard_cfg.cap_source == "none":
+                guard_cap_enabled = False
+            elif guard_cfg.cap_value is None:
+                log_event(logger, "exposure_guard_cap_missing", source=guard_cfg.cap_source)
+                guard_cap_enabled = False
+            else:
+                cap_value = float(guard_cfg.cap_value)
+                if cap_value <= 0:
+                    log_event(logger, "exposure_guard_cap_invalid", value=cap_value)
+                    guard_cap_enabled = False
+                else:
+                    gross_cap = cap_value + float(guard_cfg.cap_buffer)
+                    if gross_cap <= 0:
+                        log_event(logger, "exposure_guard_cap_invalid", value=gross_cap)
+                        guard_cap_enabled = False
+                    else:
+                        guard_cap_enabled = True
+
     start_cash = float(cfg.backtest.initial_cash_usd)
     if float(cfg.selection.cash_start_usd) != start_cash:
         log_event(
@@ -381,8 +470,27 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     skipped_buys = 0
     reserve_violations = 0
     cash_ratios: List[float] = []
+    vol_cap_candidates = 0
+    vol_cap_excluded = 0
+    vol_cap_missing = 0
+    vol_cap_penalized = 0
+    vol_cap_weeks = 0
+    vol_cap_penalized_weeks = 0
+    guard_scales: List[float] = []
+    guard_base_applied_weeks = 0
+    guard_cap_applied_weeks = 0
+    prev_selected_symbols: Set[str] = set()
 
     cost_rate = float(cfg.cost_model.bps_per_side) / 10000.0
+    buffer_bps = float(cfg.selection.estimate_entry_buffer_bps)
+    deadband_abs = max(0.0, float(cfg.selection.deadband_abs))
+    deadband_rel = max(0.0, float(cfg.selection.deadband_rel))
+    min_trade_notional = max(0.0, float(cfg.selection.min_trade_notional))
+    deadband_v2_enabled = bool(cfg.execution.deadband_v2.enabled)
+    if not deadband_v2_enabled:
+        deadband_abs = 0.0
+        deadband_rel = 0.0
+        min_trade_notional = 0.0
     max_positions = max(int(cfg.selection.max_positions), 1)
     buy_fill_policy = cfg.selection.buy_fill_policy
     if buy_fill_policy not in ("ranked_partial", "ranked_strict"):
@@ -406,8 +514,11 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                             "reserve_usd": reserve,
                             "cash_minus_reserve": cash_minus_reserve,
                             "n_positions": 0,
+                            "exposure_guard_base_applied": False,
+                            "exposure_guard_cap_applied": False,
                         }
                     )
+                    prev_selected_symbols = set()
                     continue
 
         train_weeks = select_training_weeks(
@@ -427,11 +538,43 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "reserve_usd": reserve,
                     "cash_minus_reserve": cash_minus_reserve,
                     "n_positions": 0,
+                    "exposure_guard_base_applied": False,
+                    "exposure_guard_cap_applied": False,
                 }
             )
+            prev_selected_symbols = set()
             continue
 
         train_df = full_df[full_df["week_start"].isin(train_weeks)]
+        if vol_cap_enabled and vol_cap_apply_to_training and not vol_cap_soft:
+            try:
+                train_df, _ = apply_vol_cap(
+                    train_df,
+                    feature_name=vol_cap_cfg.feature_name,
+                    rank_threshold=vol_cap_cfg.rank_threshold,
+                    group_by="week_start",
+                    enabled=vol_cap_enabled,
+                )
+            except ValueError as exc:
+                log_event(logger, "vol_cap_error", error=str(exc))
+                raise
+            if train_df.empty:
+                cash_minus_reserve = cash - reserve
+                nav_rows.append(
+                    {
+                        "week_start": week,
+                        "nav": cash,
+                        "cash_usd": cash,
+                        "positions_value": 0.0,
+                        "reserve_usd": reserve,
+                        "cash_minus_reserve": cash_minus_reserve,
+                        "n_positions": 0,
+                        "exposure_guard_base_applied": False,
+                        "exposure_guard_cap_applied": False,
+                    }
+                )
+                prev_selected_symbols = set()
+                continue
         model = train_linear_model(train_df, FEATURE_COLUMNS, "label_return")
         if model is None:
             cash_minus_reserve = cash - reserve
@@ -444,8 +587,11 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "reserve_usd": reserve,
                     "cash_minus_reserve": cash_minus_reserve,
                     "n_positions": 0,
+                    "exposure_guard_base_applied": False,
+                    "exposure_guard_cap_applied": False,
                 }
             )
+            prev_selected_symbols = set()
             continue
 
         week_features = full_df[full_df["week_start"] == week].copy()
@@ -460,8 +606,11 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "reserve_usd": reserve,
                     "cash_minus_reserve": cash_minus_reserve,
                     "n_positions": 0,
+                    "exposure_guard_base_applied": False,
+                    "exposure_guard_cap_applied": False,
                 }
             )
+            prev_selected_symbols = set()
             continue
 
         week_features = week_features[
@@ -482,12 +631,127 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "reserve_usd": reserve,
                     "cash_minus_reserve": cash_minus_reserve,
                     "n_positions": 0,
+                    "exposure_guard_base_applied": False,
+                    "exposure_guard_cap_applied": False,
                 }
             )
+            prev_selected_symbols = set()
             continue
+
+        use_vol_penalty = vol_cap_enabled and vol_cap_apply_to_selection and vol_cap_soft
+        if vol_cap_enabled and vol_cap_apply_to_selection and not vol_cap_soft:
+            try:
+                week_features, vol_stats = apply_vol_cap(
+                    week_features,
+                    feature_name=vol_cap_cfg.feature_name,
+                    rank_threshold=vol_cap_cfg.rank_threshold,
+                    hold_symbols=prev_selected_symbols,
+                    hold_threshold=vol_cap_hold_threshold,
+                    enabled=vol_cap_enabled,
+                )
+            except ValueError as exc:
+                log_event(logger, "vol_cap_error", error=str(exc))
+                raise
+            if vol_stats.candidates > 0:
+                vol_cap_candidates += vol_stats.candidates
+                vol_cap_excluded += vol_stats.excluded
+                vol_cap_missing += vol_stats.missing
+                vol_cap_weeks += 1
+            if week_features.empty:
+                cash_minus_reserve = cash - reserve
+                nav_rows.append(
+                    {
+                        "week_start": week,
+                        "nav": cash,
+                        "cash_usd": cash,
+                        "positions_value": 0.0,
+                        "reserve_usd": reserve,
+                        "cash_minus_reserve": cash_minus_reserve,
+                        "n_positions": 0,
+                        "exposure_guard_base_applied": False,
+                        "exposure_guard_cap_applied": False,
+                    }
+                )
+                prev_selected_symbols = set()
+                continue
 
         preds = predict_linear_model(model, week_features, FEATURE_COLUMNS)
         week_features = week_features.assign(pred_return=preds)
+
+        if use_vol_penalty:
+            try:
+                week_features, vol_stats = apply_vol_penalty(
+                    week_features,
+                    feature_name=vol_cap_cfg.feature_name,
+                    rank_threshold=vol_cap_cfg.rank_threshold,
+                    penalty_min=vol_cap_penalty_min,
+                    enabled=vol_cap_enabled,
+                )
+            except ValueError as exc:
+                log_event(logger, "vol_cap_penalty_error", error=str(exc))
+                raise
+            if vol_stats.candidates > 0:
+                vol_cap_candidates += vol_stats.candidates
+                vol_cap_missing += vol_stats.missing
+                vol_cap_penalized += vol_stats.penalized
+                vol_cap_weeks += 1
+                vol_cap_penalized_weeks += 1
+            if week_features.empty:
+                cash_minus_reserve = cash - reserve
+                nav_rows.append(
+                    {
+                        "week_start": week,
+                        "nav": cash,
+                        "cash_usd": cash,
+                        "positions_value": 0.0,
+                        "reserve_usd": reserve,
+                        "cash_minus_reserve": cash_minus_reserve,
+                        "n_positions": 0,
+                        "exposure_guard_base_applied": False,
+                        "exposure_guard_cap_applied": False,
+                    }
+                )
+                prev_selected_symbols = set()
+                continue
+            week_features = week_features.assign(pred_return_raw=week_features["pred_return"])
+            week_features = week_features.assign(
+                pred_return=week_features["pred_return"] * week_features["vol_cap_penalty"]
+            )
+
+        min_buy = float(cfg.selection.min_proba_buy)
+        min_keep = float(cfg.selection.min_proba_keep)
+        if not (0.0 <= min_buy <= 1.0) or not (0.0 <= min_keep <= 1.0):
+            raise ValueError("min_proba_buy/min_proba_keep must be within [0, 1]")
+        if min_buy > 0.0 or min_keep > 0.0:
+            week_features = week_features.assign(pred_rank=week_features["pred_return"].rank(pct=True, method="max"))
+            primary = week_features
+            if min_buy > 0.0:
+                primary = week_features[week_features["pred_rank"] >= min_buy]
+            if min_keep > 0.0 and min_keep < min_buy:
+                secondary = week_features[
+                    (week_features["pred_rank"] >= min_keep) & (week_features["pred_rank"] < min_buy)
+                ]
+                week_features = pd.concat([primary, secondary], ignore_index=False)
+            else:
+                week_features = primary
+            if week_features.empty:
+                cash_minus_reserve = cash - reserve
+                nav_rows.append(
+                    {
+                        "week_start": week,
+                        "nav": cash,
+                        "cash_usd": cash,
+                        "positions_value": 0.0,
+                        "reserve_usd": reserve,
+                        "cash_minus_reserve": cash_minus_reserve,
+                        "n_positions": 0,
+                        "exposure_guard_base_applied": False,
+                        "exposure_guard_cap_applied": False,
+                    }
+                )
+                prev_selected_symbols = set()
+                continue
+
         week_features = week_features.sort_values("pred_return", ascending=False)
 
         if gate_cfg.enabled and not gate_open and gate_action == "raise_threshold":
@@ -504,28 +768,54 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                         "reserve_usd": reserve,
                         "cash_minus_reserve": cash_minus_reserve,
                         "n_positions": 0,
+                        "exposure_guard_base_applied": False,
+                        "exposure_guard_cap_applied": False,
                     }
                 )
+                prev_selected_symbols = set()
                 continue
 
         cash_after_buys = cash
         positions_value = 0.0
         sell_costs_total = 0.0
         positions_count = 0
+        total_required = 0.0
+        total_pnl = 0.0
+        week_trade_start = len(trades)
+        selected_symbols: List[str] = []
+        nav_est = cash if cash > 0 else 0.0
 
-        for row in week_features.itertuples(index=False):
+        target_rows = week_features.head(max_positions)
+        target_weights = pd.Series(dtype=float)
+        sum_abs_dw_raw = 0.0
+        if nav_est > 0.0 and not target_rows.empty:
+            target_weights = pd.to_numeric(target_rows["price"], errors="coerce").fillna(0.0) / nav_est
+            sum_abs_dw_raw = float(target_weights.abs().sum())
+        sum_abs_dw_filtered = 0.0
+
+        for row, target_weight in zip(target_rows.itertuples(index=False), target_weights):
             if positions_count >= max_positions:
                 break
             entry_price = float(row.price)
+            w_cur = 0.0
+            w_tgt = float(target_weight)
+            dw = w_tgt - w_cur
+            if deadband_v2_enabled:
+                band = max(deadband_abs, deadband_rel * abs(w_tgt))
+                if abs(dw) < band:
+                    continue
+                if min_trade_notional > 0.0 and w_cur != 0.0 and w_tgt != 0.0 and abs(dw) < min_trade_notional:
+                    continue
             realized_return = float(row.label_return)
             buy_cost = entry_price * cost_rate
-            required = entry_price + buy_cost
+            required = entry_price * (1.0 + buffer_bps / 10000.0) + buy_cost
             if cash_after_buys - reserve < required:
                 skipped_buys += 1
                 if buy_fill_policy == "ranked_strict":
                     break
                 continue
             cash_after_buys -= required
+            total_required += required
 
             exit_price = entry_price * (1.0 + realized_return)
             sell_cost = exit_price * cost_rate
@@ -533,7 +823,10 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
             pnl = proceeds - required
             positions_value += exit_price
             sell_costs_total += sell_cost
+            total_pnl += pnl
             positions_count += 1
+            selected_symbols.append(str(row.symbol))
+            sum_abs_dw_filtered += abs(dw)
 
             trades.append(
                 {
@@ -548,20 +841,74 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                 }
             )
 
+        exposure_guard_scale = 1.0
+        if guard_enabled and guard_active and positions_value > 0.0:
+            base_applied = False
+            cap_applied = False
+            if guard_base_scale < 1.0:
+                exposure_guard_scale *= guard_base_scale
+                base_applied = True
+                for idx in range(week_trade_start, len(trades)):
+                    trades[idx]["pnl"] *= guard_base_scale
+                    trades[idx]["buy_cost"] *= guard_base_scale
+                    trades[idx]["sell_cost"] *= guard_base_scale
+                total_required *= guard_base_scale
+                positions_value *= guard_base_scale
+                sell_costs_total *= guard_base_scale
+                total_pnl *= guard_base_scale
+                cash_after_buys = cash - total_required
+
+            if guard_cap_enabled and gross_cap is not None:
+                nav_raw = cash_after_buys + positions_value - sell_costs_total
+                if nav_raw > 0.0:
+                    gross_raw = positions_value / nav_raw
+                    if gross_raw > gross_cap:
+                        denom = positions_value - gross_cap * total_pnl
+                        if denom > 0.0:
+                            cap_scale = (gross_cap * cash) / denom
+                        else:
+                            cap_scale = gross_cap / gross_raw
+                        cap_scale = max(0.0, min(1.0, cap_scale))
+                        if cap_scale < 1.0:
+                            exposure_guard_scale *= cap_scale
+                            cap_applied = True
+                            for idx in range(week_trade_start, len(trades)):
+                                trades[idx]["pnl"] *= cap_scale
+                                trades[idx]["buy_cost"] *= cap_scale
+                                trades[idx]["sell_cost"] *= cap_scale
+                            total_required *= cap_scale
+                            positions_value *= cap_scale
+                            sell_costs_total *= cap_scale
+                            total_pnl *= cap_scale
+                            cash_after_buys = cash - total_required
+
+            if exposure_guard_scale < 1.0:
+                guard_scales.append(exposure_guard_scale)
+            if base_applied:
+                guard_base_applied_weeks += 1
+            if cap_applied:
+                guard_cap_applied_weeks += 1
+
         cash_minus_reserve = cash_after_buys - reserve
         if cash_minus_reserve < 0:
             reserve_violations += 1
 
         cash = cash_after_buys + positions_value - sell_costs_total
         nav = cash
+        prev_selected_symbols = set(selected_symbols) if selected_symbols else set()
         nav_row = {
             "week_start": week,
             "nav": nav,
             "cash_usd": cash_after_buys,
+            "cash_after_exec": cash_after_buys,
             "positions_value": positions_value,
             "reserve_usd": reserve,
             "cash_minus_reserve": cash_minus_reserve,
             "n_positions": positions_count,
+            "sum_abs_dw_raw": sum_abs_dw_raw,
+            "sum_abs_dw_filtered": sum_abs_dw_filtered,
+            "exposure_guard_base_applied": bool(base_applied) if guard_enabled and guard_active else False,
+            "exposure_guard_cap_applied": bool(cap_applied) if guard_enabled and guard_active else False,
         }
         nav_rows.append(nav_row)
         if nav > 0:
@@ -574,6 +921,30 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     nav_df = pd.DataFrame(nav_rows)
     if not nav_df.empty:
         nav_df = nav_df.sort_values("week_start").reset_index(drop=True)
+        if "sum_abs_dw_raw" in nav_df.columns:
+            sum_abs_dw_raw = pd.to_numeric(nav_df["sum_abs_dw_raw"], errors="coerce").fillna(0.0)
+        else:
+            sum_abs_dw_raw = pd.Series(0.0, index=nav_df.index)
+        if "sum_abs_dw_filtered" in nav_df.columns:
+            sum_abs_dw_filtered = pd.to_numeric(nav_df["sum_abs_dw_filtered"], errors="coerce").fillna(0.0)
+        else:
+            sum_abs_dw_filtered = pd.Series(0.0, index=nav_df.index)
+        nav_df["sum_abs_dw_raw"] = sum_abs_dw_raw
+        nav_df["sum_abs_dw_filtered"] = sum_abs_dw_filtered
+
+        if "cash_after_exec" in nav_df.columns:
+            cash_after_exec = pd.to_numeric(nav_df["cash_after_exec"], errors="coerce")
+        else:
+            cash_after_exec = pd.Series([float("nan")] * len(nav_df), index=nav_df.index)
+        if "cash_usd" in nav_df.columns:
+            cash_after_exec = cash_after_exec.fillna(nav_df["cash_usd"])
+        nav_df["cash_after_exec"] = cash_after_exec
+
+        filtered_fraction = pd.Series(0.0, index=nav_df.index)
+        mask = sum_abs_dw_raw > 0
+        filtered_fraction[mask] = 1.0 - (sum_abs_dw_filtered[mask] / sum_abs_dw_raw[mask])
+        nav_df["filtered_trade_fraction"] = filtered_fraction
+    eval_weeks = int(len(nav_df)) if not nav_df.empty else 0
 
     write_parquet_atomic(trades_df, backtest_dir / "trades.parquet")
     write_parquet_atomic(nav_df, backtest_dir / "nav.parquet")
@@ -636,6 +1007,77 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                 "regime_gate_source": gate_result.source if gate_result else None,
                 "regime_gate_ma_days": gate_result.ma_days if gate_result else None,
                 "regime_gate_closed_weeks": int(gate_closed_weeks),
+            }
+        )
+    if vol_cap_enabled:
+            summary.update(
+                {
+                    "vol_cap_enabled": True,
+                    "vol_cap_mode": vol_cap_mode,
+                    "vol_cap_penalty_min": vol_cap_penalty_min,
+                    "vol_cap_apply_stage": vol_cap_cfg.apply_stage,
+                    "vol_cap_apply_to_training": vol_cap_apply_to_training,
+                    "vol_cap_apply_to_selection": vol_cap_apply_to_selection,
+                    "vol_cap_feature": vol_cap_cfg.feature_name,
+                    "vol_cap_rank_threshold": float(vol_cap_cfg.rank_threshold),
+                    "vol_cap_candidates": int(vol_cap_candidates) if vol_cap_apply_to_selection else None,
+                    "vol_cap_excluded": int(vol_cap_excluded) if vol_cap_apply_to_selection else None,
+                    "vol_cap_missing": int(vol_cap_missing) if vol_cap_apply_to_selection else None,
+                    "vol_cap_excluded_rate": (
+                        float(vol_cap_excluded) / float(vol_cap_candidates)
+                        if vol_cap_apply_to_selection and vol_cap_candidates
+                        else None
+                    ),
+                    "vol_cap_weeks": int(vol_cap_weeks) if vol_cap_apply_to_selection else None,
+                    "vol_cap_penalized": (
+                        int(vol_cap_penalized) if vol_cap_apply_to_selection else None
+                    ),
+                    "vol_cap_penalized_rate": (
+                        float(vol_cap_penalized) / float(vol_cap_candidates)
+                        if vol_cap_apply_to_selection and vol_cap_candidates
+                        else None
+                    ),
+                    "vol_cap_penalized_weeks": (
+                        int(vol_cap_penalized_weeks) if vol_cap_apply_to_selection else None
+                    ),
+                }
+            )
+    if guard_enabled:
+        guard_scale_series = pd.Series(guard_scales, dtype=float) if guard_cfg.log_scale else pd.Series(dtype=float)
+        summary.update(
+            {
+                "exposure_guard_enabled": True,
+                "exposure_guard_active": guard_active,
+                "exposure_guard_trigger": guard_cfg.trigger,
+                "exposure_guard_mode": guard_cfg.mode,
+                "exposure_guard_base_source": guard_cfg.base_source,
+                "exposure_guard_base_scale": guard_cfg.base_scale,
+                "exposure_guard_cap_source": guard_cfg.cap_source,
+                "exposure_guard_cap_value": guard_cfg.cap_value,
+                "exposure_guard_cap_buffer": float(guard_cfg.cap_buffer),
+                "exposure_guard_cap": gross_cap,
+                "exposure_guard_cap_enabled": guard_cap_enabled,
+                "exposure_guard_applied_weeks": int(len(guard_scales)),
+                "exposure_guard_base_applied_weeks": int(guard_base_applied_weeks),
+                "exposure_guard_cap_applied_weeks": int(guard_cap_applied_weeks),
+                "exposure_guard_base_applied_rate": (
+                    float(guard_base_applied_weeks / eval_weeks) if eval_weeks else None
+                ),
+                "exposure_guard_cap_applied_rate": (
+                    float(guard_cap_applied_weeks / eval_weeks) if eval_weeks else None
+                ),
+                "exposure_guard_scale_avg": (
+                    float(guard_scale_series.mean()) if not guard_scale_series.empty else None
+                ),
+                "exposure_guard_scale_p95": (
+                    float(guard_scale_series.quantile(0.95)) if not guard_scale_series.empty else None
+                ),
+                "exposure_guard_scale_min": (
+                    float(guard_scale_series.min()) if not guard_scale_series.empty else None
+                ),
+                "exposure_guard_scale_max": (
+                    float(guard_scale_series.max()) if not guard_scale_series.empty else None
+                ),
             }
         )
     write_state(summary, backtest_dir / "summary.json")

@@ -15,6 +15,9 @@ def _write_config(
     artifacts_dir: Path,
     weekly_dir: Path,
     exclude_symbols: list[str],
+    vol_cap_enabled: bool = False,
+    vol_cap_threshold: float = 0.8,
+    vol_cap_feature: str = "vol_4w",
 ) -> None:
     def _p(value: Path) -> str:
         return value.as_posix()
@@ -81,6 +84,8 @@ selection:
   max_positions: 2
   buy_fill_policy: "ranked_partial"
   estimate_entry_buffer_bps: 0
+  min_proba_buy: 0.0
+  min_proba_keep: 0.0
 
 cost_model:
   bps_per_side: 0.0
@@ -93,6 +98,23 @@ risk:
     spy_symbol: "SPY"
     ma_days: 60
     pred_return_floor: 0.0
+  vol_cap:
+    enabled: {str(vol_cap_enabled).lower()}
+    rank_threshold: {vol_cap_threshold}
+    apply_stage: "selection"
+    feature_name: "{vol_cap_feature}"
+    mode: "hard"
+    penalty_min: 0.5
+  exposure_guard:
+    enabled: false
+    trigger: "vol_cap_enabled"
+    mode: "daily"
+    base_source: "off_avg_on_avg"
+    base_scale: null
+    cap_source: "off_p95"
+    cap_value: null
+    cap_buffer: 0.0
+    log_scale: true
 
 backtest:
   start_date: "2024-01-01"
@@ -214,3 +236,63 @@ def test_weekly_excludes_spy(tmp_path: Path) -> None:
 
     candidates_df = pd.read_csv(candidates_files[-1])
     assert "SPY" not in candidates_df["symbol"].astype(str).tolist()
+
+
+def test_vol_cap_filters_candidates(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    artifacts_dir = tmp_path / "artifacts"
+    weekly_dir = data_dir / "snapshots" / "weekly"
+    config_path = tmp_path / "config.yaml"
+
+    _write_config(
+        config_path,
+        data_dir=data_dir,
+        artifacts_dir=artifacts_dir,
+        weekly_dir=weekly_dir,
+        exclude_symbols=[],
+        vol_cap_enabled=True,
+        vol_cap_threshold=0.5,
+    )
+
+    weekly_dir.mkdir(parents=True, exist_ok=True)
+    weeks = [date(2024, 1, 1), date(2024, 1, 8)]
+    rows = []
+    labels = []
+    for week in weeks:
+        rows.append(
+            {
+                "week_start": week,
+                "symbol": "LOW",
+                "price": 10.0,
+                "avg_dollar_vol_20d": 1e7,
+                "ret_1w": 0.01,
+                "ret_4w": 0.0,
+                "vol_4w": 0.1,
+            }
+        )
+        rows.append(
+            {
+                "week_start": week,
+                "symbol": "HIGH",
+                "price": 10.0,
+                "avg_dollar_vol_20d": 1e7,
+                "ret_1w": 0.01,
+                "ret_4w": 0.0,
+                "vol_4w": 2.0,
+            }
+        )
+        labels.append({"week_start": week, "symbol": "LOW", "label_return": 0.02})
+        labels.append({"week_start": week, "symbol": "HIGH", "label_return": 0.02})
+
+    pd.DataFrame(rows).to_parquet(weekly_dir / "features.parquet", index=False)
+    pd.DataFrame(labels).to_parquet(weekly_dir / "labels.parquet", index=False)
+
+    cfg = load_config(config_path=config_path, local_path=tmp_path / "config.local.yaml")
+    weekly.run(cfg)
+
+    orders_dir = artifacts_dir / "orders"
+    candidates_files = sorted(orders_dir.glob("orders_candidates_*.csv"))
+    assert candidates_files
+
+    candidates_df = pd.read_csv(candidates_files[-1])
+    assert "HIGH" not in candidates_df["symbol"].astype(str).tolist()

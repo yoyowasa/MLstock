@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict
@@ -21,4 +22,11 @@ def write_state(state: Dict[str, Any], path: Path) -> None:
     tmp_path = path.with_suffix(path.suffix + f".{uuid.uuid4().hex}.tmp")
     with tmp_path.open("w", encoding="utf-8") as handle:
         json.dump(state, handle, ensure_ascii=True, indent=2)
-    os.replace(tmp_path, path)
+    for attempt in range(5):
+        try:
+            os.replace(tmp_path, path)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.1 * (attempt + 1))

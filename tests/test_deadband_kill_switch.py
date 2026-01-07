@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pandas as pd
 
 from mlstock.config.loader import load_config
 from mlstock.data.storage.state import read_state
-from mlstock.jobs import backtest, weekly
+from mlstock.jobs import weekly
 
 
 def _write_config(
@@ -15,15 +16,15 @@ def _write_config(
     data_dir: Path,
     artifacts_dir: Path,
     weekly_dir: Path,
-    cash_start: float,
-    reserve: float,
-    max_positions: int,
-    price_cap: float,
-    buffer_bps: float,
+    *,
+    execution_enabled: bool,
+    deadband_abs: float,
+    min_trade_notional: float,
 ) -> None:
     def _p(value: Path) -> str:
         return value.as_posix()
 
+    enabled = "true" if execution_enabled else "false"
     content = f"""
 project:
   timezone: "America/New_York"
@@ -74,14 +75,21 @@ training:
   min_train_weeks: 1
 
 selection:
-  cash_start_usd: {cash_start}
-  cash_reserve_usd: {reserve}
-  price_cap: {price_cap}
-  max_positions: {max_positions}
+  cash_start_usd: 100.0
+  cash_reserve_usd: 0.0
+  price_cap: 1000.0
+  max_positions: 2
   buy_fill_policy: "ranked_partial"
-  estimate_entry_buffer_bps: {buffer_bps}
+  estimate_entry_buffer_bps: 0.0
   min_proba_buy: 0.0
   min_proba_keep: 0.0
+  deadband_abs: {deadband_abs}
+  deadband_rel: 0.0
+  min_trade_notional: {min_trade_notional}
+
+execution:
+  deadband_v2:
+    enabled: {enabled}
 
 cost_model:
   bps_per_side: 0.0
@@ -115,7 +123,7 @@ risk:
 backtest:
   start_date: "2024-01-01"
   end_date: "2024-01-31"
-  initial_cash_usd: {cash_start}
+  initial_cash_usd: 100.0
 
 logging:
   level: "INFO"
@@ -133,8 +141,8 @@ def _write_snapshots(weekly_dir: Path) -> None:
         rows.append(
             {
                 "week_start": week,
-                "symbol": "EXP",
-                "price": 9.0,
+                "symbol": "AAA",
+                "price": 10.0,
                 "avg_dollar_vol_20d": 1e7,
                 "ret_1w": 0.10,
                 "ret_4w": 0.0,
@@ -144,86 +152,84 @@ def _write_snapshots(weekly_dir: Path) -> None:
         rows.append(
             {
                 "week_start": week,
-                "symbol": "CHE",
-                "price": 5.0,
+                "symbol": "BBB",
+                "price": 20.0,
                 "avg_dollar_vol_20d": 1e7,
-                "ret_1w": 0.01,
+                "ret_1w": 0.05,
                 "ret_4w": 0.0,
                 "vol_4w": 0.0,
             }
         )
-        labels.append({"week_start": week, "symbol": "EXP", "label_return": 0.05})
-        labels.append({"week_start": week, "symbol": "CHE", "label_return": 0.02})
+        labels.append({"week_start": week, "symbol": "AAA", "label_return": 0.05})
+        labels.append({"week_start": week, "symbol": "BBB", "label_return": 0.02})
 
-    features_df = pd.DataFrame(rows)
-    labels_df = pd.DataFrame(labels)
-    features_df.to_parquet(weekly_dir / "features.parquet", index=False)
-    labels_df.to_parquet(weekly_dir / "labels.parquet", index=False)
+    pd.DataFrame(rows).to_parquet(weekly_dir / "features.parquet", index=False)
+    pd.DataFrame(labels).to_parquet(weekly_dir / "labels.parquet", index=False)
 
 
-def test_backtest_reserve_constraints(tmp_path: Path) -> None:
-    data_dir = tmp_path / "data"
-    artifacts_dir = tmp_path / "artifacts"
-    weekly_dir = data_dir / "snapshots" / "weekly"
-    config_path = tmp_path / "config.yaml"
-
-    _write_config(
-        config_path,
-        data_dir=data_dir,
-        artifacts_dir=artifacts_dir,
-        weekly_dir=weekly_dir,
-        cash_start=10.0,
-        reserve=2.0,
-        max_positions=2,
-        price_cap=1000.0,
-        buffer_bps=0.0,
-    )
-    _write_snapshots(weekly_dir)
-
-    cfg = load_config(config_path=config_path, local_path=tmp_path / "config.local.yaml")
-    backtest.run(cfg, start=date(2024, 1, 1), end=date(2024, 1, 8))
-
-    summary = read_state(artifacts_dir / "backtest" / "summary.json")
-    assert summary["reserve_violation_count"] == 0
-    assert summary["skipped_buys_insufficient_cash"] >= 1
-
-    nav_df = pd.read_parquet(artifacts_dir / "backtest" / "nav.parquet")
-    assert (nav_df["cash_minus_reserve"] >= 0).all()
+def _load_selection(artifacts_dir: Path) -> dict:
+    orders_dir = artifacts_dir / "orders"
+    selection_files = sorted(orders_dir.glob("selection_*.json"))
+    assert selection_files
+    return read_state(selection_files[-1])
 
 
-def test_weekly_orders_budgeted(tmp_path: Path) -> None:
-    data_dir = tmp_path / "data"
-    artifacts_dir = tmp_path / "artifacts"
-    weekly_dir = data_dir / "snapshots" / "weekly"
-    config_path = tmp_path / "config.yaml"
-
-    _write_config(
-        config_path,
-        data_dir=data_dir,
-        artifacts_dir=artifacts_dir,
-        weekly_dir=weekly_dir,
-        cash_start=10.0,
-        reserve=2.0,
-        max_positions=2,
-        price_cap=1000.0,
-        buffer_bps=0.0,
-    )
-    _write_snapshots(weekly_dir)
-
-    cfg = load_config(config_path=config_path, local_path=tmp_path / "config.local.yaml")
+def _run_weekly(config_path: Path, artifacts_dir: Path) -> dict:
+    cfg = load_config(config_path=config_path, local_path=config_path.with_name("config.local.yaml"))
     weekly.run(cfg)
+    return _load_selection(artifacts_dir)
 
-    orders_path = artifacts_dir / "orders"
-    orders_files = sorted(path for path in orders_path.glob("orders_*.csv") if "orders_candidates" not in path.name)
-    assert orders_files
 
-    orders_df = pd.read_csv(orders_files[-1])
-    buys = orders_df[orders_df["side"] == "buy"].copy()
-    assert not buys.empty
+def test_deadband_kill_switch_off_smoke(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    weekly_dir = data_dir / "snapshots" / "weekly"
+    _write_snapshots(weekly_dir)
 
-    cash = 10.0
-    reserve = 2.0
-    for _, row in buys.sort_values("priority").iterrows():
-        required = float(row["required_est"])
-        cash -= required
-        assert cash >= reserve
+    artifacts_disabled = tmp_path / "artifacts_disabled"
+    config_disabled = tmp_path / "config_disabled.yaml"
+    _write_config(
+        config_disabled,
+        data_dir=data_dir,
+        artifacts_dir=artifacts_disabled,
+        weekly_dir=weekly_dir,
+        execution_enabled=False,
+        deadband_abs=0.2,
+        min_trade_notional=0.1,
+    )
+    disabled = _run_weekly(config_disabled, artifacts_disabled)
+
+    artifacts_baseline = tmp_path / "artifacts_baseline"
+    config_baseline = tmp_path / "config_baseline.yaml"
+    _write_config(
+        config_baseline,
+        data_dir=data_dir,
+        artifacts_dir=artifacts_baseline,
+        weekly_dir=weekly_dir,
+        execution_enabled=True,
+        deadband_abs=0.0,
+        min_trade_notional=0.0,
+    )
+    baseline = _run_weekly(config_baseline, artifacts_baseline)
+
+    assert disabled["deadband_v2_enabled"] is False
+    assert math.isclose(
+        float(disabled["sum_abs_dw_filtered"]),
+        float(disabled["sum_abs_dw_raw"]),
+        abs_tol=1e-12,
+    )
+    assert math.isclose(float(disabled["filtered_trade_fraction"]), 0.0, abs_tol=1e-12)
+    assert math.isclose(
+        float(disabled["cash_after_exec"]),
+        float(baseline["cash_after_exec"]),
+        abs_tol=1e-9,
+    )
+    assert math.isclose(
+        float(disabled["sum_abs_dw_raw"]),
+        float(baseline["sum_abs_dw_raw"]),
+        abs_tol=1e-12,
+    )
+    assert math.isclose(
+        float(disabled["sum_abs_dw_filtered"]),
+        float(baseline["sum_abs_dw_filtered"]),
+        abs_tol=1e-12,
+    )
