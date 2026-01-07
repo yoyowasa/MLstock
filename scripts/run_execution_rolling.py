@@ -131,15 +131,12 @@ def main() -> None:
     )
 
     guard_override = any(
-        value is not None
-        for value in (args.guard_deadband_abs, args.guard_deadband_rel, args.guard_min_trade_notional)
+        value is not None for value in (args.guard_deadband_abs, args.guard_deadband_rel, args.guard_min_trade_notional)
     )
     guard_deadband_abs = deadband_abs if args.guard_deadband_abs is None else float(args.guard_deadband_abs)
     guard_deadband_rel = deadband_rel if args.guard_deadband_rel is None else float(args.guard_deadband_rel)
     guard_min_trade_notional = (
-        min_trade_notional
-        if args.guard_min_trade_notional is None
-        else float(args.guard_min_trade_notional)
+        min_trade_notional if args.guard_min_trade_notional is None else float(args.guard_min_trade_notional)
     )
 
     selection_off = replace(cfg.selection, deadband_abs=0.0, deadband_rel=0.0, min_trade_notional=0.0)
@@ -239,9 +236,7 @@ def main() -> None:
             nav_df, trades_df = collect_nav_trades(backtest_dir)
             metrics_guard = collect_metrics_for_range(nav_df, trades_df, current_start, test_end)
             returns_guard = collect_returns_for_range(nav_df, current_start, test_end)
-            cost_returns_guard = collect_cost_adjusted_returns(
-                nav_df, trades_df, current_start, test_end, bps_list
-            )
+            cost_returns_guard = collect_cost_adjusted_returns(nav_df, trades_df, current_start, test_end, bps_list)
             trades_guard, turnover_guard, turnover_std_guard = collect_turnover(
                 trades_df,
                 current_start,
@@ -424,9 +419,7 @@ def main() -> None:
         rolling_metrics_by_variant[name] = metrics
         turnover_ratio_by_variant[name] = ratio
         if isinstance(metrics.get("avg_nav"), (int, float)) and metrics["avg_nav"]:
-            turnover_ratio_std_by_variant[name] = float(turnover_std_by_variant[name]) / float(
-                metrics["avg_nav"]
-            )
+            turnover_ratio_std_by_variant[name] = float(turnover_std_by_variant[name]) / float(metrics["avg_nav"])
         else:
             turnover_ratio_std_by_variant[name] = None
         if name == "guard":
@@ -728,13 +721,9 @@ def main() -> None:
         "full_guard_turnover_std_usd": turnover_std_by_variant_full["guard"],
         "full_guard_turnover_ratio_std": turnover_ratio_std_by_variant_full["guard"],
         "full_diff_guard_minus_off_return": _diff_metric(rolling_metrics_by_variant_full, "guard", "return_pct"),
-        "full_diff_guard_minus_off_maxDD": _diff_metric(
-            rolling_metrics_by_variant_full, "guard", "max_drawdown_pct"
-        ),
+        "full_diff_guard_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant_full, "guard", "max_drawdown_pct"),
         "full_diff_raw_minus_off_return": _diff_metric(rolling_metrics_by_variant_full, "raw", "return_pct"),
-        "full_diff_raw_minus_off_maxDD": _diff_metric(
-            rolling_metrics_by_variant_full, "raw", "max_drawdown_pct"
-        ),
+        "full_diff_raw_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant_full, "raw", "max_drawdown_pct"),
     }
 
     for scope, label_prefix in (("valid", "valid"), ("full", "full")):
@@ -743,13 +732,9 @@ def main() -> None:
             guard_diff = cost_diffs[scope][bps]["guard_minus_off"]
             raw_diff = cost_diffs[scope][bps]["raw_minus_off"]
             summary_row[f"{label_prefix}_diff_guard_minus_off_return_{label}"] = guard_diff.get("return_pct")
-            summary_row[f"{label_prefix}_diff_guard_minus_off_maxDD_{label}"] = guard_diff.get(
-                "max_drawdown_pct"
-            )
+            summary_row[f"{label_prefix}_diff_guard_minus_off_maxDD_{label}"] = guard_diff.get("max_drawdown_pct")
             summary_row[f"{label_prefix}_diff_raw_minus_off_return_{label}"] = raw_diff.get("return_pct")
-            summary_row[f"{label_prefix}_diff_raw_minus_off_maxDD_{label}"] = raw_diff.get(
-                "max_drawdown_pct"
-            )
+            summary_row[f"{label_prefix}_diff_raw_minus_off_maxDD_{label}"] = raw_diff.get("max_drawdown_pct")
 
     summary_df = pd.DataFrame([summary_row])
     summary_df.to_csv(summary_csv_path, index=False)

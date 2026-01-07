@@ -111,9 +111,7 @@ def main() -> int:
             return_diff = None if guard_return is None or off_return is None else guard_return - off_return
             guard_turnover = _parse_float(row.get("guard_turnover_ratio"))
             off_turnover = _parse_float(row.get("off_turnover_ratio"))
-            turnover_diff = (
-                None if guard_turnover is None or off_turnover is None else guard_turnover - off_turnover
-            )
+            turnover_diff = None if guard_turnover is None or off_turnover is None else guard_turnover - off_turnover
 
             reasons = []
             if guard_used_off is not True:

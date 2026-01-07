@@ -56,9 +56,7 @@ def _collect_run_metrics(backtest_dir: Path) -> dict:
 
     gross_exposure = _calc_gross_exposure(nav_df)
     gross_exposure_avg = float(gross_exposure.mean()) if not gross_exposure.empty else None
-    gross_exposure_p95 = (
-        float(gross_exposure.quantile(0.95)) if not gross_exposure.empty else None
-    )
+    gross_exposure_p95 = float(gross_exposure.quantile(0.95)) if not gross_exposure.empty else None
     gross_exposure_max = float(gross_exposure.max()) if not gross_exposure.empty else None
 
     n_positions = nav_df["n_positions"] if "n_positions" in nav_df.columns else pd.Series(dtype=float)

@@ -47,9 +47,7 @@ def _load_nav_trades(backtest_dir: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
     return nav_df, trades_df
 
 
-def _collect_metrics_for_range(
-    nav_df: pd.DataFrame, trades_df: pd.DataFrame, start: date, end: date
-) -> dict:
+def _collect_metrics_for_range(nav_df: pd.DataFrame, trades_df: pd.DataFrame, start: date, end: date) -> dict:
     if nav_df.empty or "week_start" not in nav_df.columns:
         return {
             "eval_weeks": 0,
@@ -126,16 +124,12 @@ def _collect_metrics_for_range(
     gross_exposure = gross_exposure.dropna()
 
     gross_exposure_avg = float(gross_exposure.mean()) if not gross_exposure.empty else None
-    gross_exposure_p95 = (
-        float(gross_exposure.quantile(0.95)) if not gross_exposure.empty else None
-    )
+    gross_exposure_p95 = float(gross_exposure.quantile(0.95)) if not gross_exposure.empty else None
     gross_exposure_max = float(gross_exposure.max()) if not gross_exposure.empty else None
 
     trades = 0
     if not trades_df.empty and "week_start" in trades_df.columns:
-        trades = int(
-            trades_df[(trades_df["week_start"] >= start) & (trades_df["week_start"] <= end)].shape[0]
-        )
+        trades = int(trades_df[(trades_df["week_start"] >= start) & (trades_df["week_start"] <= end)].shape[0])
 
     cap_bind_weeks = 0
     base_applied_weeks = 0
@@ -342,9 +336,7 @@ def main() -> None:
     gate_cfg = replace(cfg.risk.regime_gate, enabled=True)
     vol_mode = args.volcap_mode if args.volcap_mode is not None else cfg.risk.vol_cap.mode
     vol_penalty_min = (
-        float(args.volcap_penalty_min)
-        if args.volcap_penalty_min is not None
-        else float(cfg.risk.vol_cap.penalty_min)
+        float(args.volcap_penalty_min) if args.volcap_penalty_min is not None else float(cfg.risk.vol_cap.penalty_min)
     )
     vol_cfg_off = replace(
         cfg.risk.vol_cap,
@@ -576,9 +568,7 @@ def main() -> None:
             nav_df, trades_df = _load_nav_trades(backtest_dir)
             metrics_guard = _collect_metrics_for_range(nav_df, trades_df, current_start, test_end)
             returns_guard = _collect_returns_for_range(nav_df, current_start, test_end)
-            cost_returns_guard = _collect_cost_adjusted_returns(
-                nav_df, trades_df, current_start, test_end, bps_list
-            )
+            cost_returns_guard = _collect_cost_adjusted_returns(nav_df, trades_df, current_start, test_end, bps_list)
             trades_guard, turnover_guard, turnover_std_guard = _collect_turnover(
                 trades_df,
                 current_start,
@@ -690,9 +680,7 @@ def main() -> None:
                 "vol_cap_premium_weeks": vol_premium_weeks,
                 "vol_cap_gate_reason": gate_reason,
                 "vol_cap_gate_threshold": args.volcap_regime_threshold if args.volcap_regime else None,
-                "vol_cap_gate_lookback_weeks": (
-                    args.volcap_regime_lookback_weeks if args.volcap_regime else None
-                ),
+                "vol_cap_gate_lookback_weeks": (args.volcap_regime_lookback_weeks if args.volcap_regime else None),
                 "base_scale_raw": base_scale_raw,
                 "base_scale_used": base_scale_used,
                 "cap_raw": cap_raw,
@@ -788,9 +776,7 @@ def main() -> None:
         rolling_metrics_by_variant[name] = metrics
         turnover_ratio_by_variant[name] = ratio
         if isinstance(metrics.get("avg_nav"), (int, float)) and metrics["avg_nav"]:
-            turnover_ratio_std_by_variant[name] = float(turnover_std_by_variant[name]) / float(
-                metrics["avg_nav"]
-            )
+            turnover_ratio_std_by_variant[name] = float(turnover_std_by_variant[name]) / float(metrics["avg_nav"])
         else:
             turnover_ratio_std_by_variant[name] = None
         if name == "guard":
@@ -899,9 +885,7 @@ def main() -> None:
         "vol_cap_gate_enabled": args.volcap_regime,
         "vol_cap_gate_lookback_weeks": args.volcap_regime_lookback_weeks if args.volcap_regime else None,
         "vol_cap_gate_threshold": args.volcap_regime_threshold if args.volcap_regime else None,
-        "vol_cap_gate_high_quantile": (
-            args.volcap_regime_high_quantile if args.volcap_regime else None
-        ),
+        "vol_cap_gate_high_quantile": (args.volcap_regime_high_quantile if args.volcap_regime else None),
         "vol_cap_gate_low_quantile": args.volcap_regime_low_quantile if args.volcap_regime else None,
         "vol_cap_gate_start_state": gate_start_state if args.volcap_regime else None,
         "update_months": args.update_months,
@@ -1012,87 +996,81 @@ def main() -> None:
     updates_df.to_csv(updates_path, index=False)
 
     summary_row = {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "vol_cap_rank_threshold": threshold,
-                "vol_cap_mode": vol_mode,
-                "vol_cap_penalty_min": vol_penalty_min,
-                "vol_cap_gate_enabled": args.volcap_regime,
-                "vol_cap_gate_lookback_weeks": (
-                    args.volcap_regime_lookback_weeks if args.volcap_regime else None
-                ),
-                "vol_cap_gate_threshold": args.volcap_regime_threshold if args.volcap_regime else None,
-                "vol_cap_gate_high_quantile": (
-                    args.volcap_regime_high_quantile if args.volcap_regime else None
-                ),
-                "vol_cap_gate_low_quantile": (
-                    args.volcap_regime_low_quantile if args.volcap_regime else None
-                ),
-                "vol_cap_gate_start_state": gate_start_state if args.volcap_regime else None,
-                "update_months": args.update_months,
-                "cal_window_weeks": args.cal_window_weeks,
-                "updates_count": len(updates),
-                "valid_updates_count": valid_updates,
-                "valid_start_date": valid_period["start"],
-                "valid_end_date": valid_period["end"],
-                "valid_weeks": valid_period["weeks"],
-                "full_start_date": full_period["start"],
-                "full_end_date": full_period["end"],
-                "full_weeks": full_period["weeks"],
-                "valid_off_return_pct": rolling_metrics_by_variant["off"].get("return_pct"),
-                "valid_off_max_drawdown_pct": rolling_metrics_by_variant["off"].get("max_drawdown_pct"),
-                "valid_off_trades": trades_by_variant["off"],
-                "valid_off_turnover_usd": turnover_by_variant["off"],
-                "valid_off_turnover_ratio": turnover_ratio_by_variant["off"],
-                "valid_off_turnover_std_usd": turnover_std_by_variant["off"],
-                "valid_off_turnover_ratio_std": turnover_ratio_std_by_variant["off"],
-                "valid_raw_return_pct": rolling_metrics_by_variant["raw"].get("return_pct"),
-                "valid_raw_max_drawdown_pct": rolling_metrics_by_variant["raw"].get("max_drawdown_pct"),
-                "valid_raw_trades": trades_by_variant["raw"],
-                "valid_raw_turnover_usd": turnover_by_variant["raw"],
-                "valid_raw_turnover_ratio": turnover_ratio_by_variant["raw"],
-                "valid_raw_turnover_std_usd": turnover_std_by_variant["raw"],
-                "valid_raw_turnover_ratio_std": turnover_ratio_std_by_variant["raw"],
-                "valid_guard_return_pct": rolling_metrics_by_variant["guard"].get("return_pct"),
-                "valid_guard_max_drawdown_pct": rolling_metrics_by_variant["guard"].get("max_drawdown_pct"),
-                "valid_guard_trades": trades_by_variant["guard"],
-                "valid_guard_turnover_usd": turnover_by_variant["guard"],
-                "valid_guard_turnover_ratio": turnover_ratio_by_variant["guard"],
-                "valid_guard_turnover_std_usd": turnover_std_by_variant["guard"],
-                "valid_guard_turnover_ratio_std": turnover_ratio_std_by_variant["guard"],
-                "valid_diff_guard_minus_off_return": _diff_metric(rolling_metrics_by_variant, "guard", "return_pct"),
-                "valid_diff_guard_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant, "guard", "max_drawdown_pct"),
-                "valid_diff_raw_minus_off_return": _diff_metric(rolling_metrics_by_variant, "raw", "return_pct"),
-                "valid_diff_raw_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant, "raw", "max_drawdown_pct"),
-                "full_off_return_pct": rolling_metrics_by_variant_full["off"].get("return_pct"),
-                "full_off_max_drawdown_pct": rolling_metrics_by_variant_full["off"].get("max_drawdown_pct"),
-                "full_off_trades": trades_by_variant_full["off"],
-                "full_off_turnover_usd": turnover_by_variant_full["off"],
-                "full_off_turnover_ratio": turnover_ratio_by_variant_full["off"],
-                "full_off_turnover_std_usd": turnover_std_by_variant_full["off"],
-                "full_off_turnover_ratio_std": turnover_ratio_std_by_variant_full["off"],
-                "full_raw_return_pct": rolling_metrics_by_variant_full["raw"].get("return_pct"),
-                "full_raw_max_drawdown_pct": rolling_metrics_by_variant_full["raw"].get("max_drawdown_pct"),
-                "full_raw_trades": trades_by_variant_full["raw"],
-                "full_raw_turnover_usd": turnover_by_variant_full["raw"],
-                "full_raw_turnover_ratio": turnover_ratio_by_variant_full["raw"],
-                "full_raw_turnover_std_usd": turnover_std_by_variant_full["raw"],
-                "full_raw_turnover_ratio_std": turnover_ratio_std_by_variant_full["raw"],
-                "full_guard_return_pct": rolling_metrics_by_variant_full["guard"].get("return_pct"),
-                "full_guard_max_drawdown_pct": rolling_metrics_by_variant_full["guard"].get("max_drawdown_pct"),
-                "full_guard_trades": trades_by_variant_full["guard"],
-                "full_guard_turnover_usd": turnover_by_variant_full["guard"],
-                "full_guard_turnover_ratio": turnover_ratio_by_variant_full["guard"],
-                "full_guard_turnover_std_usd": turnover_std_by_variant_full["guard"],
-                "full_guard_turnover_ratio_std": turnover_ratio_std_by_variant_full["guard"],
-                "full_diff_guard_minus_off_return": _diff_metric(rolling_metrics_by_variant_full, "guard", "return_pct"),
-                "full_diff_guard_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant_full, "guard", "max_drawdown_pct"),
-                "full_diff_raw_minus_off_return": _diff_metric(rolling_metrics_by_variant_full, "raw", "return_pct"),
-                "full_diff_raw_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant_full, "raw", "max_drawdown_pct"),
-                "cap_bind_rate_p50": cap_bind_stats["p50"],
-                "cap_bind_rate_p95": cap_bind_stats["p95"],
-                "cap_bind_rate_max": cap_bind_stats["max"],
-            }
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "vol_cap_rank_threshold": threshold,
+        "vol_cap_mode": vol_mode,
+        "vol_cap_penalty_min": vol_penalty_min,
+        "vol_cap_gate_enabled": args.volcap_regime,
+        "vol_cap_gate_lookback_weeks": (args.volcap_regime_lookback_weeks if args.volcap_regime else None),
+        "vol_cap_gate_threshold": args.volcap_regime_threshold if args.volcap_regime else None,
+        "vol_cap_gate_high_quantile": (args.volcap_regime_high_quantile if args.volcap_regime else None),
+        "vol_cap_gate_low_quantile": (args.volcap_regime_low_quantile if args.volcap_regime else None),
+        "vol_cap_gate_start_state": gate_start_state if args.volcap_regime else None,
+        "update_months": args.update_months,
+        "cal_window_weeks": args.cal_window_weeks,
+        "updates_count": len(updates),
+        "valid_updates_count": valid_updates,
+        "valid_start_date": valid_period["start"],
+        "valid_end_date": valid_period["end"],
+        "valid_weeks": valid_period["weeks"],
+        "full_start_date": full_period["start"],
+        "full_end_date": full_period["end"],
+        "full_weeks": full_period["weeks"],
+        "valid_off_return_pct": rolling_metrics_by_variant["off"].get("return_pct"),
+        "valid_off_max_drawdown_pct": rolling_metrics_by_variant["off"].get("max_drawdown_pct"),
+        "valid_off_trades": trades_by_variant["off"],
+        "valid_off_turnover_usd": turnover_by_variant["off"],
+        "valid_off_turnover_ratio": turnover_ratio_by_variant["off"],
+        "valid_off_turnover_std_usd": turnover_std_by_variant["off"],
+        "valid_off_turnover_ratio_std": turnover_ratio_std_by_variant["off"],
+        "valid_raw_return_pct": rolling_metrics_by_variant["raw"].get("return_pct"),
+        "valid_raw_max_drawdown_pct": rolling_metrics_by_variant["raw"].get("max_drawdown_pct"),
+        "valid_raw_trades": trades_by_variant["raw"],
+        "valid_raw_turnover_usd": turnover_by_variant["raw"],
+        "valid_raw_turnover_ratio": turnover_ratio_by_variant["raw"],
+        "valid_raw_turnover_std_usd": turnover_std_by_variant["raw"],
+        "valid_raw_turnover_ratio_std": turnover_ratio_std_by_variant["raw"],
+        "valid_guard_return_pct": rolling_metrics_by_variant["guard"].get("return_pct"),
+        "valid_guard_max_drawdown_pct": rolling_metrics_by_variant["guard"].get("max_drawdown_pct"),
+        "valid_guard_trades": trades_by_variant["guard"],
+        "valid_guard_turnover_usd": turnover_by_variant["guard"],
+        "valid_guard_turnover_ratio": turnover_ratio_by_variant["guard"],
+        "valid_guard_turnover_std_usd": turnover_std_by_variant["guard"],
+        "valid_guard_turnover_ratio_std": turnover_ratio_std_by_variant["guard"],
+        "valid_diff_guard_minus_off_return": _diff_metric(rolling_metrics_by_variant, "guard", "return_pct"),
+        "valid_diff_guard_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant, "guard", "max_drawdown_pct"),
+        "valid_diff_raw_minus_off_return": _diff_metric(rolling_metrics_by_variant, "raw", "return_pct"),
+        "valid_diff_raw_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant, "raw", "max_drawdown_pct"),
+        "full_off_return_pct": rolling_metrics_by_variant_full["off"].get("return_pct"),
+        "full_off_max_drawdown_pct": rolling_metrics_by_variant_full["off"].get("max_drawdown_pct"),
+        "full_off_trades": trades_by_variant_full["off"],
+        "full_off_turnover_usd": turnover_by_variant_full["off"],
+        "full_off_turnover_ratio": turnover_ratio_by_variant_full["off"],
+        "full_off_turnover_std_usd": turnover_std_by_variant_full["off"],
+        "full_off_turnover_ratio_std": turnover_ratio_std_by_variant_full["off"],
+        "full_raw_return_pct": rolling_metrics_by_variant_full["raw"].get("return_pct"),
+        "full_raw_max_drawdown_pct": rolling_metrics_by_variant_full["raw"].get("max_drawdown_pct"),
+        "full_raw_trades": trades_by_variant_full["raw"],
+        "full_raw_turnover_usd": turnover_by_variant_full["raw"],
+        "full_raw_turnover_ratio": turnover_ratio_by_variant_full["raw"],
+        "full_raw_turnover_std_usd": turnover_std_by_variant_full["raw"],
+        "full_raw_turnover_ratio_std": turnover_ratio_std_by_variant_full["raw"],
+        "full_guard_return_pct": rolling_metrics_by_variant_full["guard"].get("return_pct"),
+        "full_guard_max_drawdown_pct": rolling_metrics_by_variant_full["guard"].get("max_drawdown_pct"),
+        "full_guard_trades": trades_by_variant_full["guard"],
+        "full_guard_turnover_usd": turnover_by_variant_full["guard"],
+        "full_guard_turnover_ratio": turnover_ratio_by_variant_full["guard"],
+        "full_guard_turnover_std_usd": turnover_std_by_variant_full["guard"],
+        "full_guard_turnover_ratio_std": turnover_ratio_std_by_variant_full["guard"],
+        "full_diff_guard_minus_off_return": _diff_metric(rolling_metrics_by_variant_full, "guard", "return_pct"),
+        "full_diff_guard_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant_full, "guard", "max_drawdown_pct"),
+        "full_diff_raw_minus_off_return": _diff_metric(rolling_metrics_by_variant_full, "raw", "return_pct"),
+        "full_diff_raw_minus_off_maxDD": _diff_metric(rolling_metrics_by_variant_full, "raw", "max_drawdown_pct"),
+        "cap_bind_rate_p50": cap_bind_stats["p50"],
+        "cap_bind_rate_p95": cap_bind_stats["p95"],
+        "cap_bind_rate_max": cap_bind_stats["max"],
+    }
 
     for scope, label_prefix in (("valid", "valid"), ("full", "full")):
         for bps in bps_list:
@@ -1100,9 +1078,7 @@ def main() -> None:
             guard_diff = cost_diffs[scope][bps]["guard_minus_off"]
             raw_diff = cost_diffs[scope][bps]["raw_minus_off"]
             summary_row[f"{label_prefix}_diff_guard_minus_off_return_{label}"] = guard_diff.get("return_pct")
-            summary_row[f"{label_prefix}_diff_guard_minus_off_maxDD_{label}"] = guard_diff.get(
-                "max_drawdown_pct"
-            )
+            summary_row[f"{label_prefix}_diff_guard_minus_off_maxDD_{label}"] = guard_diff.get("max_drawdown_pct")
             summary_row[f"{label_prefix}_diff_raw_minus_off_return_{label}"] = raw_diff.get("return_pct")
             summary_row[f"{label_prefix}_diff_raw_minus_off_maxDD_{label}"] = raw_diff.get("max_drawdown_pct")
 

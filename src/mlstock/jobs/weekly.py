@@ -512,12 +512,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
                 band = max(deadband_abs, deadband_rel * abs(w_tgt))
                 if abs(delta) < band:
                     keep = True
-                elif (
-                    min_trade_notional > 0.0
-                    and w_cur != 0.0
-                    and w_tgt != 0.0
-                    and abs(delta) < min_trade_notional
-                ):
+                elif min_trade_notional > 0.0 and w_cur != 0.0 and w_tgt != 0.0 and abs(delta) < min_trade_notional:
                     keep = True
         if keep:
             kept_positions[symbol] = qty_int

@@ -1010,38 +1010,34 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
             }
         )
     if vol_cap_enabled:
-            summary.update(
-                {
-                    "vol_cap_enabled": True,
-                    "vol_cap_mode": vol_cap_mode,
-                    "vol_cap_penalty_min": vol_cap_penalty_min,
-                    "vol_cap_apply_stage": vol_cap_cfg.apply_stage,
-                    "vol_cap_apply_to_training": vol_cap_apply_to_training,
-                    "vol_cap_apply_to_selection": vol_cap_apply_to_selection,
-                    "vol_cap_feature": vol_cap_cfg.feature_name,
-                    "vol_cap_rank_threshold": float(vol_cap_cfg.rank_threshold),
-                    "vol_cap_candidates": int(vol_cap_candidates) if vol_cap_apply_to_selection else None,
-                    "vol_cap_excluded": int(vol_cap_excluded) if vol_cap_apply_to_selection else None,
-                    "vol_cap_missing": int(vol_cap_missing) if vol_cap_apply_to_selection else None,
-                    "vol_cap_excluded_rate": (
-                        float(vol_cap_excluded) / float(vol_cap_candidates)
-                        if vol_cap_apply_to_selection and vol_cap_candidates
-                        else None
-                    ),
-                    "vol_cap_weeks": int(vol_cap_weeks) if vol_cap_apply_to_selection else None,
-                    "vol_cap_penalized": (
-                        int(vol_cap_penalized) if vol_cap_apply_to_selection else None
-                    ),
-                    "vol_cap_penalized_rate": (
-                        float(vol_cap_penalized) / float(vol_cap_candidates)
-                        if vol_cap_apply_to_selection and vol_cap_candidates
-                        else None
-                    ),
-                    "vol_cap_penalized_weeks": (
-                        int(vol_cap_penalized_weeks) if vol_cap_apply_to_selection else None
-                    ),
-                }
-            )
+        summary.update(
+            {
+                "vol_cap_enabled": True,
+                "vol_cap_mode": vol_cap_mode,
+                "vol_cap_penalty_min": vol_cap_penalty_min,
+                "vol_cap_apply_stage": vol_cap_cfg.apply_stage,
+                "vol_cap_apply_to_training": vol_cap_apply_to_training,
+                "vol_cap_apply_to_selection": vol_cap_apply_to_selection,
+                "vol_cap_feature": vol_cap_cfg.feature_name,
+                "vol_cap_rank_threshold": float(vol_cap_cfg.rank_threshold),
+                "vol_cap_candidates": int(vol_cap_candidates) if vol_cap_apply_to_selection else None,
+                "vol_cap_excluded": int(vol_cap_excluded) if vol_cap_apply_to_selection else None,
+                "vol_cap_missing": int(vol_cap_missing) if vol_cap_apply_to_selection else None,
+                "vol_cap_excluded_rate": (
+                    float(vol_cap_excluded) / float(vol_cap_candidates)
+                    if vol_cap_apply_to_selection and vol_cap_candidates
+                    else None
+                ),
+                "vol_cap_weeks": int(vol_cap_weeks) if vol_cap_apply_to_selection else None,
+                "vol_cap_penalized": (int(vol_cap_penalized) if vol_cap_apply_to_selection else None),
+                "vol_cap_penalized_rate": (
+                    float(vol_cap_penalized) / float(vol_cap_candidates)
+                    if vol_cap_apply_to_selection and vol_cap_candidates
+                    else None
+                ),
+                "vol_cap_penalized_weeks": (int(vol_cap_penalized_weeks) if vol_cap_apply_to_selection else None),
+            }
+        )
     if guard_enabled:
         guard_scale_series = pd.Series(guard_scales, dtype=float) if guard_cfg.log_scale else pd.Series(dtype=float)
         summary.update(
@@ -1072,12 +1068,8 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                 "exposure_guard_scale_p95": (
                     float(guard_scale_series.quantile(0.95)) if not guard_scale_series.empty else None
                 ),
-                "exposure_guard_scale_min": (
-                    float(guard_scale_series.min()) if not guard_scale_series.empty else None
-                ),
-                "exposure_guard_scale_max": (
-                    float(guard_scale_series.max()) if not guard_scale_series.empty else None
-                ),
+                "exposure_guard_scale_min": (float(guard_scale_series.min()) if not guard_scale_series.empty else None),
+                "exposure_guard_scale_max": (float(guard_scale_series.max()) if not guard_scale_series.empty else None),
             }
         )
     write_state(summary, backtest_dir / "summary.json")

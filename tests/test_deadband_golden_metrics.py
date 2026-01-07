@@ -80,16 +80,11 @@ def test_deadband_golden_metrics(tmp_path: Path) -> None:
     assert diff20 is not None and diff20 >= 0.0
     assert dd0 is not None and dd0 >= 0.0
     assert dd5 is not None and dd5 >= 0.0
-    assert (
-        off_turn is not None
-        and raw_turn is not None
-        and raw_turn <= off_turn
-    )
+    assert off_turn is not None and raw_turn is not None and raw_turn <= off_turn
 
     output_prefix_off = tmp_path / "deadband_golden_off"
     subprocess.run(
-        base_cmd
-        + ["--deadband-enabled", "false", "--output-prefix", str(output_prefix_off)],
+        base_cmd + ["--deadband-enabled", "false", "--output-prefix", str(output_prefix_off)],
         check=True,
         cwd=root,
         env=env,
@@ -113,7 +108,5 @@ def test_deadband_golden_metrics(tmp_path: Path) -> None:
     assert diff20_off is not None and math.isclose(diff20_off, 0.0, abs_tol=1e-6)
     assert dd0_off is not None and math.isclose(dd0_off, 0.0, abs_tol=1e-6)
     assert (
-        off_turn_off is not None
-        and raw_turn_off is not None
-        and math.isclose(raw_turn_off, off_turn_off, abs_tol=1e-9)
+        off_turn_off is not None and raw_turn_off is not None and math.isclose(raw_turn_off, off_turn_off, abs_tol=1e-9)
     )

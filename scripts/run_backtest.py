@@ -119,9 +119,7 @@ def _collect_metrics(cfg, start: Optional[date], end: Optional[date]) -> Tuple[d
             avg_position_weight = avg_gross_exposure / avg_positions
     gross_exposure_series = gross_exposure_series.dropna()
     gross_exposure_max = float(gross_exposure_series.max()) if not gross_exposure_series.empty else None
-    gross_exposure_p95 = (
-        float(gross_exposure_series.quantile(0.95)) if not gross_exposure_series.empty else None
-    )
+    gross_exposure_p95 = float(gross_exposure_series.quantile(0.95)) if not gross_exposure_series.empty else None
 
     return {
         "eval_weeks": total_weeks,
@@ -287,7 +285,9 @@ def main() -> None:
     guard_cfg = cfg.risk.exposure_guard
     guard_cfg_variant = guard_cfg
     if guard_cfg.enabled and guard_cfg.base_scale is None and guard_cfg.base_source == "off_avg_on_avg":
-        cfg_on_raw = replace(cfg_variant, risk=replace(cfg_variant.risk, exposure_guard=replace(guard_cfg, enabled=False)))
+        cfg_on_raw = replace(
+            cfg_variant, risk=replace(cfg_variant.risk, exposure_guard=replace(guard_cfg, enabled=False))
+        )
         metrics_on_raw, _ = _collect_metrics(cfg_on_raw, start_date, end_date)
         avg_gross_off = metrics_base.get("avg_gross_exposure")
         avg_gross_on = metrics_on_raw.get("avg_gross_exposure")
@@ -297,11 +297,7 @@ def main() -> None:
                 base_scale = 1.0
             guard_cfg_variant = replace(guard_cfg_variant, base_scale=float(base_scale))
 
-    if (
-        guard_cfg.enabled
-        and guard_cfg.cap_value is None
-        and guard_cfg.cap_source in ("off_p95", "off_avg")
-    ):
+    if guard_cfg.enabled and guard_cfg.cap_value is None and guard_cfg.cap_source in ("off_p95", "off_avg"):
         base_value = metrics_base.get("gross_exposure_p95") if guard_cfg.cap_source == "off_p95" else None
         if guard_cfg.cap_source == "off_avg":
             base_value = metrics_base.get("avg_gross_exposure")

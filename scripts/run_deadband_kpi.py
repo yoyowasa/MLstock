@@ -176,11 +176,7 @@ def main() -> None:
             continue
         rows.append(_build_row(payload, selection_path))
 
-    output_path = (
-        Path(args.output)
-        if args.output
-        else artifacts_dir(cfg) / "monitoring" / "deadband_weekly_kpi.csv"
-    )
+    output_path = Path(args.output) if args.output else artifacts_dir(cfg) / "monitoring" / "deadband_weekly_kpi.csv"
     _write_csv(rows, output_path)
     print(f"saved: {output_path}")
 
