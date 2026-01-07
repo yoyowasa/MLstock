@@ -635,7 +635,7 @@ def main() -> None:
 
     quarterly_df = updates_df
     if "valid_eval" in quarterly_df.columns:
-        quarterly_df = quarterly_df[quarterly_df["valid_eval"] == True].copy()
+        quarterly_df = quarterly_df[quarterly_df["valid_eval"]].copy()
     quarterly_columns = [
         "update_index",
         "test_start",

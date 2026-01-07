@@ -17,7 +17,7 @@ from mlstock.data.storage.paths import (
     snapshots_features_path,
     snapshots_labels_path,
 )
-from mlstock.data.storage.state import read_state, write_state
+from mlstock.data.storage.state import write_state
 from mlstock.jobs import backtest
 
 
