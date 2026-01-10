@@ -1,2 +1,7 @@
 cd E:\MLStock
 .\.venv\Scripts\Activate.ps1
+
+金曜引け後（データ更新が終わってから、金曜夜〜週末でOK）に run_weekly.py を回して selection_YYYYMMDD.json / orders_YYYYMMDD.csv を確定
+その結果（データ鮮度・設定・turnover恒等式・gate等）を確認して問題なければ、月曜寄り に orders_YYYYMMDD.csv の内容で発注（sell/buy両方）
+月曜休場なら「次の取引日寄り」（火曜寄り等）
+注意：月曜寄り直前に再実行すると別stampの orders_*.csv が増えるので、検証したファイル（stamp）でそのまま執行するのが安全です

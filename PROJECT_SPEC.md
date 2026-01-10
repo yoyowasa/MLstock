@@ -861,6 +861,53 @@ thr=0.95 + v2 + 校正→次期間固定は、OOS-1/OOS-2の両方で return改�
 .\.venv\Scripts\python scripts\run_weekly.py
 ```
 
+### Execution Deadband v2 週次チェックリスト（運用・1ページ版）
+> 毎週 `run_weekly.py` 実行後に、**データ鮮度／設定／注文整合／turnover分解／deadband効き具合／gate状態** を最短で確認し、異常時は kill switch で即回避する。
+
+**参照する出力**
+- `artifacts/orders/selection_YYYYMMDD.json`（週次サマリ・設定・指標・symbol集合）
+- `artifacts/orders/orders_YYYYMMDD.csv`（生成注文）
+- `artifacts/monitoring/deadband_weekly_kpi.csv`（週次KPI時系列。`run_deadband_kpi.py` で更新）
+
+**定型コマンド**
+```powershell
+# 1) 週次実行（データ増分 → snapshots → selection/orders）
+.\.venv\Scripts\python scripts\run_weekly.py
+
+# 2) 週次KPI更新（selection履歴 → CSV再集計）
+.\.venv\Scripts\python scripts\run_deadband_kpi.py
+
+# 3) 最新の週次サマリ/注文（stamp確認用）
+Get-ChildItem artifacts/orders/selection_*.json | Sort-Object Name | Select-Object -Last 1
+Get-ChildItem artifacts/orders/orders_*.csv    | Sort-Object Name | Select-Object -Last 1
+```
+
+**チェックリスト（OK/NGを即判定）**
+- [ ] 1) **データ鮮度（最優先）**：`week_start` が直近、`data_max_features_date`/`data_max_labels_date`/`data_max_week_map_date` が更新され `week_start` と整合（止まっていたら売買判断は保留推奨）
+- [ ] 2) **deadband v2 設定**：`deadband_v2_enabled==true`、`deadband_abs==0.0025`、`deadband_rel==0.0`、`min_trade_notional==0.0`（異常時は `execution.deadband_v2.enabled=false` で即OFF）
+- [ ] 3) **注文と集合の整合**：`orders_*.csv` の buy/sell が `buy_symbols`/`sell_symbols` に含まれる、`keep_symbols` と `sell_symbols` が不自然に重ならない（注文ゼロ週は `orders.csv` 空でOK）
+- [ ] 4) **turnover分解（監視の本命）**：`turnover_ratio_total_abs == turnover_ratio_buy + turnover_ratio_sell`、`turnover_ratio_total_half == 0.5*turnover_ratio_total_abs`
+- [ ] 5) **売りだけ週（必須の正常系）**：`turnover_ratio_buy==0` でも `turnover_ratio_sell>0` かつ `turnover_ratio_total_abs>0`（`turnover_ratio_std==0` は仕様上OK）
+- [ ] 6) **deadband効き具合**：`deadband_notional_reduction ≈ 1-(filtered/raw)`（raw>0）、`trade_count_filtered<=trade_count_raw`、`filtered_trade_fraction_count` は 0〜1（ゼロ割しない）
+- [ ] 7) **gate状態**：`regime_gate.enabled` と `regime_gate.active` を混同しない（`enabled=false` のとき `active=false`、`active=true` のときのみ `action` が運用に影響）
+
+**警戒ライン（目安）**
+- `deadband_notional_reduction` が **10%超** が連発 → 効きすぎ（追従不足の疑い）
+- `filtered_trade_fraction_count` が **70%超** が連発 → 取引を止めすぎの疑い
+- `cash_after_exec` が急増し、注文ゼロ週が続く → 候補不足／データ不足／deadband効きすぎの疑い
+
+**スモーク（推奨：変更時・違和感時）**
+```powershell
+# kill switch（OFF同値）
+.\.venv\Scripts\python -m pytest tests\test_deadband_kill_switch.py -k off_smoke
+
+# 売りだけ週（再集計で売り>0/総量>0 を確認）
+.\.venv\Scripts\python -m pytest tests\test_deadband_sell_only_week_smoke.py
+```
+
+**即時回避（kill switch）**
+- `config.local.yaml` で `execution.deadband_v2.enabled: false` にして素通し（監視/ログは継続、execution変換のみ即停止）
+
 ### Deadband v2 運用前チェック（OFF同値/監視KPI/カナリア）
 1) OFF同値テスト（最低限）
 ```powershell
