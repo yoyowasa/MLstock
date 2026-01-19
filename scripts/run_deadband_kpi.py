@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from mlstock.config.loader import load_config
 from mlstock.data.storage.paths import artifacts_dir, artifacts_orders_dir
@@ -42,6 +43,9 @@ DEFAULT_COLUMNS = [
     "data_max_features_date",
     "data_max_labels_date",
     "data_max_week_map_date",
+    "kpi_check_status",
+    "kpi_check_notes",
+    "kpi_check_detail",
 ]
 
 
@@ -61,6 +65,95 @@ def _calc_filtered_fraction(sum_raw: object, sum_filtered: object) -> Optional[f
     if raw == 0:
         return None
     return 1.0 - (filtered / raw)
+
+
+def _parse_date(value: object) -> Optional[datetime.date]:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(value)).date()
+    except ValueError:
+        return None
+
+
+REASON_DESCRIPTIONS = {
+    "features_date_old": "data_max_features_date < week_start",
+    "week_map_date_old": "data_max_week_map_date < week_start",
+    "labels_date_old": "data_max_labels_date < week_start-7d",
+    "data_max_missing": "data_max_* missing",
+    "trade_count_filtered_gt_raw": "trade_count_filtered > trade_count_raw",
+    "turnover_mismatch": "turnover_total_abs != buy + sell",
+    "turnover_missing": "turnover ratio missing",
+    "deadband_reduction_high": "deadband_notional_reduction >= 0.10",
+    "deadband_reduction_missing": "deadband_notional_reduction missing",
+    "week_start_missing": "week_start missing",
+}
+
+
+def _format_detail(codes: List[str]) -> str:
+    parts = []
+    for code in codes:
+        desc = REASON_DESCRIPTIONS.get(code, "")
+        if desc:
+            parts.append(f"{code}:{desc}")
+        else:
+            parts.append(code)
+    return ";".join(parts)
+
+
+def _evaluate_kpi(row: Dict[str, Any]) -> Tuple[str, str, str]:
+    warns: List[str] = []
+    ngs: List[str] = []
+
+    week_start = _parse_date(row.get("week_start"))
+    if week_start is None:
+        warns.append("week_start_missing")
+
+    features_date = _parse_date(row.get("data_max_features_date"))
+    week_map_date = _parse_date(row.get("data_max_week_map_date"))
+    labels_date = _parse_date(row.get("data_max_labels_date"))
+
+    if week_start and features_date and features_date < week_start:
+        ngs.append("features_date_old")
+    if week_start and week_map_date and week_map_date < week_start:
+        ngs.append("week_map_date_old")
+    if week_start and labels_date and labels_date < (week_start - timedelta(days=7)):
+        warns.append("labels_date_old")
+    if week_start and (features_date is None or week_map_date is None):
+        warns.append("data_max_missing")
+
+    trade_count_raw = _as_float(row.get("trade_count_raw"))
+    trade_count_filtered = _as_float(row.get("trade_count_filtered"))
+    if trade_count_raw is not None and trade_count_filtered is not None:
+        if trade_count_filtered > trade_count_raw + 1e-9:
+            ngs.append("trade_count_filtered_gt_raw")
+
+    turnover_total_abs = _as_float(row.get("turnover_ratio_total_abs"))
+    turnover_buy = _as_float(row.get("turnover_ratio_buy"))
+    turnover_sell = _as_float(row.get("turnover_ratio_sell"))
+    if turnover_total_abs is not None and turnover_buy is not None and turnover_sell is not None:
+        if abs(turnover_total_abs - (turnover_buy + turnover_sell)) > 1e-8:
+            ngs.append("turnover_mismatch")
+    else:
+        warns.append("turnover_missing")
+
+    deadband_reduction = _as_float(row.get("deadband_notional_reduction"))
+    if deadband_reduction is None:
+        warns.append("deadband_reduction_missing")
+    elif deadband_reduction >= 0.10:
+        warns.append("deadband_reduction_high")
+
+    if ngs:
+        status = "NG"
+        codes = ngs + warns
+    elif warns:
+        status = "WARN"
+        codes = warns
+    else:
+        status = "OK"
+        codes = []
+    detail = _format_detail(codes)
+    return status, ";".join(codes), detail
 
 
 def _build_row(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
@@ -106,7 +199,7 @@ def _build_row(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
     if cash_est_after_buys is None:
         cash_est_after_buys = cash_after_exec
 
-    return {
+    row = {
         "selection_file": path.name,
         "as_of": payload.get("as_of"),
         "week_start": payload.get("week_start"),
@@ -139,6 +232,12 @@ def _build_row(payload: Dict[str, Any], path: Path) -> Dict[str, Any]:
         "data_max_labels_date": payload.get("data_max_labels_date"),
         "data_max_week_map_date": payload.get("data_max_week_map_date"),
     }
+
+    status, notes, detail = _evaluate_kpi(row)
+    row["kpi_check_status"] = status
+    row["kpi_check_notes"] = notes
+    row["kpi_check_detail"] = detail
+    return row
 
 
 def _collect_selection_files(orders_dir: Path) -> List[Path]:

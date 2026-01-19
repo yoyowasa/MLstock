@@ -15,4 +15,25 @@ if (-not (Test-Path $python)) {
 
 Set-Location $repoRoot
 & $python $target @Args
-exit $LASTEXITCODE
+$code = $LASTEXITCODE
+if ($code -ne 0) {
+    exit $code
+}
+
+$bundleScript = Join-Path $repoRoot "scripts\\weekly_bundle.ps1"
+if (Test-Path $bundleScript) {
+    & $bundleScript
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
+$kpiScript = Join-Path $repoRoot "scripts\\run_deadband_kpi.py"
+if (Test-Path $kpiScript) {
+    & $python $kpiScript
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
+
+exit 0

@@ -10,6 +10,7 @@ import pandas as pd
 from mlstock.config.schema import AppConfig
 from mlstock.data.storage.parquet import read_parquet, write_parquet_atomic
 from mlstock.data.storage.paths import (
+    artifacts_dir,
     artifacts_models_dir,
     artifacts_orders_dir,
     artifacts_state_dir,
@@ -54,6 +55,71 @@ def _normalize_portfolio_state(state: Dict[str, object], cfg: AppConfig) -> Dict
         "cash_usd": float(cash),
         "positions": positions,
     }
+
+
+def _append_portfolio_nav(
+    cfg: AppConfig,
+    as_of: str,
+    week_start: str,
+    cash_usd: float,
+    positions: Dict[str, int],
+    price_lookup: Dict[str, float],
+) -> None:
+    monitoring_dir = artifacts_dir(cfg) / "monitoring"
+    output_path = monitoring_dir / "portfolio_nav.csv"
+
+    positions_value = 0.0
+    missing_prices = 0
+    positions_count = 0
+    for symbol, qty in positions.items():
+        try:
+            qty_int = int(qty)
+        except (TypeError, ValueError):
+            continue
+        if qty_int <= 0:
+            continue
+        positions_count += 1
+        price = price_lookup.get(symbol)
+        if price is None or pd.isna(price):
+            missing_prices += 1
+            continue
+        positions_value += float(price) * qty_int
+
+    nav = float(cash_usd) + positions_value
+    row = {
+        "as_of": as_of,
+        "week_start": week_start,
+        "cash_usd": float(cash_usd),
+        "positions_value": positions_value,
+        "nav": nav,
+        "positions_count": positions_count,
+        "missing_prices": missing_prices,
+    }
+
+    if output_path.exists():
+        df = pd.read_csv(output_path)
+    else:
+        df = pd.DataFrame()
+
+    if "week_start" in df.columns:
+        df = df[df["week_start"].astype(str) != str(week_start)]
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+    df["week_start"] = pd.to_datetime(df["week_start"], errors="coerce")
+    df = df.sort_values("week_start").reset_index(drop=True)
+
+    nav_series = pd.to_numeric(df["nav"], errors="coerce")
+    nav_prev = nav_series.shift(1).mask(lambda s: s == 0)
+    weekly_pnl = nav_series - nav_prev
+    pct_change = weekly_pnl / nav_prev
+
+    df["nav_prev"] = nav_prev
+    df["weekly_pnl"] = weekly_pnl
+    df["pct_change"] = pct_change
+    df["week_start"] = df["week_start"].dt.date.astype(str)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
 
 
 def run(cfg: AppConfig) -> Dict[str, object]:
@@ -788,6 +854,14 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         "positions": next_positions,
     }
     write_state(next_state, portfolio_path)
+    _append_portfolio_nav(
+        cfg,
+        as_of=today.isoformat(),
+        week_start=current_week.isoformat(),
+        cash_usd=float(next_state["cash_usd"]),
+        positions=next_state["positions"],
+        price_lookup=price_lookup,
+    )
 
     log_event(logger, "complete", buys=selected_count, sells=len(sell_orders), orders=len(orders))
     return selection_payload

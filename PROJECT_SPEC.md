@@ -1,25 +1,36 @@
 # PROJECT_SPEC.md — US Weekly ML Stock MVP (1-share, $1,000, Long-only)
 
 > 本ファイルは、このチャットで確定した **設計・仕様・固定関係・運用ルール・検証/監査・比較実験** を、リポジトリに置ける **単一の仕様書**として整理したもの。  
-> **コードは含めない**。実装は本仕様に従う。
+> **コードは含めない**。実装は本仕様に従う。  
+> 運用・稼働手順は `RUNBOOK.md` を参照。
 
 ---
 
 ## Table of Contents
-1. [目的](#目的)  
-2. [スコープ](#スコープ)  
-3. [固定要件（不変）](#固定要件不変)  
-4. [追加の固定仕様（このチャットで確定）](#追加の固定仕様このチャットで確定)  
-5. [リポジトリと実行環境](#リポジトリと実行環境)  
-6. [設定（config）規約](#設定config規約)  
-7. [データソースとデータ契約](#データソースとデータ契約)  
-8. [パイプライン（初回バックフィル→週次運用）](#パイプライン初回バックフィル週次運用)  
-9. [バックテスト仕様（現金・リザーブ・約定）](#バックテスト仕様現金リザーブ約定)  
-10. [検証・監査（監査JSON/比較実験）](#検証監査監査json比較実験)  
-11. [採用済みリスク制御と結論](#採用済みリスク制御と結論)  
-12. [未確定事項とバックログ](#未確定事項とバックログ)  
-13. [Runbook（実行コマンド）](#runbook実行コマンド)  
+1. [決定事項サマリ（運用に影響する結論）](#決定事項サマリ運用に影響する結論)  
+2. [目的](#目的)  
+3. [スコープ](#スコープ)  
+4. [固定要件（不変）](#固定要件不変)  
+5. [追加の固定仕様（このチャットで確定）](#追加の固定仕様このチャットで確定)  
+6. [リポジトリと実行環境](#リポジトリと実行環境)  
+7. [設定（config）規約](#設定config規約)  
+8. [データソースとデータ契約](#データソースとデータ契約)  
+9. [パイプライン（初回バックフィル→週次運用）](#パイプライン初回バックフィル週次運用)  
+10. [バックテスト仕様（現金・リザーブ・約定）](#バックテスト仕様現金リザーブ約定)  
+11. [検証・監査（監査JSON/比較実験）](#検証監査監査json比較実験)  
+12. [参考：リスク制御の詳細・比較実験](#参考リスク制御の詳細比較実験)  
+13. [未確定事項とバックログ](#未確定事項とバックログ)  
 14. [用語・定義](#用語定義)  
+
+---
+
+## 決定事項サマリ（運用に影響する結論）
+- 週次/米国株/1株/$1,000、金曜引け観測→月曜寄りエントリー（固定要件）
+- `reserve_usd=100`、`K_max=15`、`P_max=60`
+- deadband v2 採用：`deadband_abs=0.0025`、`deadband_rel=0.0`、`min_trade_notional=0.0`（KPIは `scripts/run_deadband_kpi.py`）
+- レジームゲート採用、SPYはseed必須
+- vol cap はデフォルトOFF（比較実験のみ）。apply_stage=selectionのみ、training+selectionは採用しない
+- 検証NG週は取引停止可。取得は冪等＋直近N日再取得
 
 ---
 
@@ -149,8 +160,8 @@
 
 ## 設定（config）規約
 ### 基本
-- 設定は **YAML**（`config.yaml`）に寄せる
-- ローカル上書き：`config.local.yaml`（gitignore推奨）
+- 設定は **YAML**（`config/config.yaml` を優先、無ければ `config.yaml`）に寄せる
+- ローカル上書き：`config/config.local.yaml` を優先（無ければ `config.local.yaml`、gitignore推奨）
 - 秘密情報（Alpaca APIキー）は **環境変数**から読む（configに入れない）
 
 ### 設定例（最小サンプル）
@@ -323,7 +334,8 @@ paths:
 
 ---
 
-## 採用済みリスク制御と結論
+## 参考：リスク制御の詳細・比較実験
+> 運用で必要な結論は「決定事項サマリ」に集約。以下は比較実験と根拠メモ。
 ### レジームゲート（採用確定）
 - SPYが無いと差分が出ない問題があり、**SPYをseedに追加＋バックフィル**で解消
 - 有効ラベル期間の分割比較でも **全期間でDD改善＆return改善**を確認 → 採用確定
@@ -828,113 +840,6 @@ thr=0.95 + v2 + 校正→次期間固定は、OOS-1/OOS-2の両方で return改�
 ---
 
 ## 未確定事項とバックログ
-
----
-
-## Runbook（実行コマンド）
-> 実行は `.\.venv\Scripts\python` を推奨（mlstock未検出の再発防止）
-
-### 初回
-1) reference
-```powershell
-.\.venv\Scripts\python scripts\run_setup_reference.py
-```
-2) seed
-```powershell
-.\.venv\Scripts\python -m mlstock make-seed --n-seed 2000
-```
-3) raw backfill
-```powershell
-.\.venv\Scripts\python scripts\run_backfill_raw.py
-```
-4) weekly snapshots
-```powershell
-.\.venv\Scripts\python scripts\run_build_snapshots.py
-```
-5) backtest（監査一式生成）
-```powershell
-.\.venv\Scripts\python scripts\run_backtest.py --start 2020-07-27 --end 2025-12-15
-```
-
-### 週次運用
-```powershell
-.\.venv\Scripts\python scripts\run_weekly.py
-```
-
-### Execution Deadband v2 週次チェックリスト（運用・1ページ版）
-> 毎週 `run_weekly.py` 実行後に、**データ鮮度／設定／注文整合／turnover分解／deadband効き具合／gate状態** を最短で確認し、異常時は kill switch で即回避する。
-
-**参照する出力**
-- `artifacts/orders/selection_YYYYMMDD.json`（週次サマリ・設定・指標・symbol集合）
-- `artifacts/orders/orders_YYYYMMDD.csv`（生成注文）
-- `artifacts/monitoring/deadband_weekly_kpi.csv`（週次KPI時系列。`run_deadband_kpi.py` で更新）
-
-**定型コマンド**
-```powershell
-# 1) 週次実行（データ増分 → snapshots → selection/orders）
-.\.venv\Scripts\python scripts\run_weekly.py
-
-# 2) 週次KPI更新（selection履歴 → CSV再集計）
-.\.venv\Scripts\python scripts\run_deadband_kpi.py
-
-# 3) 最新の週次サマリ/注文（stamp確認用）
-Get-ChildItem artifacts/orders/selection_*.json | Sort-Object Name | Select-Object -Last 1
-Get-ChildItem artifacts/orders/orders_*.csv    | Sort-Object Name | Select-Object -Last 1
-```
-
-**チェックリスト（OK/NGを即判定）**
-- [ ] 1) **データ鮮度（最優先）**：`week_start` が直近、`data_max_features_date`/`data_max_labels_date`/`data_max_week_map_date` が更新され `week_start` と整合（止まっていたら売買判断は保留推奨）
-- [ ] 2) **deadband v2 設定**：`deadband_v2_enabled==true`、`deadband_abs==0.0025`、`deadband_rel==0.0`、`min_trade_notional==0.0`（異常時は `execution.deadband_v2.enabled=false` で即OFF）
-- [ ] 3) **注文と集合の整合**：`orders_*.csv` の buy/sell が `buy_symbols`/`sell_symbols` に含まれる、`keep_symbols` と `sell_symbols` が不自然に重ならない（注文ゼロ週は `orders.csv` 空でOK）
-- [ ] 4) **turnover分解（監視の本命）**：`turnover_ratio_total_abs == turnover_ratio_buy + turnover_ratio_sell`、`turnover_ratio_total_half == 0.5*turnover_ratio_total_abs`
-- [ ] 5) **売りだけ週（必須の正常系）**：`turnover_ratio_buy==0` でも `turnover_ratio_sell>0` かつ `turnover_ratio_total_abs>0`（`turnover_ratio_std==0` は仕様上OK）
-- [ ] 6) **deadband効き具合**：`deadband_notional_reduction ≈ 1-(filtered/raw)`（raw>0）、`trade_count_filtered<=trade_count_raw`、`filtered_trade_fraction_count` は 0〜1（ゼロ割しない）
-- [ ] 7) **gate状態**：`regime_gate.enabled` と `regime_gate.active` を混同しない（`enabled=false` のとき `active=false`、`active=true` のときのみ `action` が運用に影響）
-
-**警戒ライン（目安）**
-- `deadband_notional_reduction` が **10%超** が連発 → 効きすぎ（追従不足の疑い）
-- `filtered_trade_fraction_count` が **70%超** が連発 → 取引を止めすぎの疑い
-- `cash_after_exec` が急増し、注文ゼロ週が続く → 候補不足／データ不足／deadband効きすぎの疑い
-
-**スモーク（推奨：変更時・違和感時）**
-```powershell
-# kill switch（OFF同値）
-.\.venv\Scripts\python -m pytest tests\test_deadband_kill_switch.py -k off_smoke
-
-# 売りだけ週（再集計で売り>0/総量>0 を確認）
-.\.venv\Scripts\python -m pytest tests\test_deadband_sell_only_week_smoke.py
-```
-
-**即時回避（kill switch）**
-- `config.local.yaml` で `execution.deadband_v2.enabled: false` にして素通し（監視/ログは継続、execution変換のみ即停止）
-
-### Deadband v2 運用前チェック（OFF同値/監視KPI/カナリア）
-1) OFF同値テスト（最低限）
-```powershell
-.\.venv\Scripts\python -m pytest tests\test_deadband_kill_switch.py -k off_smoke
-```
-2) （任意）rollingのゴールデン確認
-```powershell
-.\.venv\Scripts\python -m pytest tests\test_deadband_golden_metrics.py
-```
-3) 監視KPI定型出力（週次の履歴をCSV化）
-```powershell
-.\.venv\Scripts\python scripts\run_deadband_kpi.py
-```
-4) カナリア → 段階拡大（例）
-   - `config.local.yaml` で `selection.max_positions` を 5→10→15 の順に2週ずつ
-   - 週次で `artifacts/monitoring/deadband_weekly_kpi.csv` を確認
-   - 異常時は `execution.deadband_v2.enabled=false` で即OFF
-
-### compare（例）
-- regime
-```powershell
-.\.venv\Scripts\python scripts\run_backtest.py --start 2022-01-01 --end 2023-12-31 --compare-regime
-```
-- volcap（gate ON基準）
-```powershell
-.\.venv\Scripts\python scripts\run_backtest.py --start 2020-07-27 --end 2025-12-15 --compare-volcap --thr 0.70
-```
 
 ---
 

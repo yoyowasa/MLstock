@@ -5,3 +5,12 @@ cd E:\MLStock
 その結果（データ鮮度・設定・turnover恒等式・gate等）を確認して問題なければ、月曜寄り に orders_YYYYMMDD.csv の内容で発注（sell/buy両方）
 月曜休場なら「次の取引日寄り」（火曜寄り等）
 注意：月曜寄り直前に再実行すると別stampの orders_*.csv が増えるので、検証したファイル（stamp）でそのまま執行するのが安全です
+
+# ステージ：作業ツリーの全変更（追加・更新・削除）を一括
+git add -A
+
+# コミット
+git commit -m "chore: bulk update after lint & format"
+
+# プッシュ
+git push
