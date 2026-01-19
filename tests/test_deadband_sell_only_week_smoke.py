@@ -74,5 +74,6 @@ def test_deadband_kpi_sell_only_week_smoke(tmp_path: Path) -> None:
     assert math.isclose(turnover_total_abs, expected_total_abs, abs_tol=1e-12)
     assert math.isclose(turnover_sell, expected_sell, abs_tol=1e-12)
     assert math.isclose(turnover_total_abs, turnover_buy + turnover_sell, abs_tol=1e-12)
-    assert turnover_total_half is not None and math.isclose(turnover_total_half, 0.5 * turnover_total_abs, abs_tol=1e-12)
-
+    assert turnover_total_half is not None and math.isclose(
+        turnover_total_half, 0.5 * turnover_total_abs, abs_tol=1e-12
+    )

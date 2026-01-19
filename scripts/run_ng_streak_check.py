@@ -101,11 +101,7 @@ def _check_bundle(bundle_dir: Path, max_positions: int) -> Tuple[bool, List[str]
             if preferred_logs:
                 weekly_log_path = preferred_logs[-1]
     if orders_path and "orders_candidates" in orders_path.name:
-        candidates = sorted(
-            path
-            for path in bundle_dir.glob("orders_*.csv")
-            if "orders_candidates" not in path.name
-        )
+        candidates = sorted(path for path in bundle_dir.glob("orders_*.csv") if "orders_candidates" not in path.name)
         if candidates:
             orders_path = candidates[-1]
     as_of_date = _parse_date(selection.get("as_of"))
@@ -245,9 +241,7 @@ def main() -> None:
         print(f"bundle_root not found: {bundle_root}")
         sys.exit(1)
 
-    bundle_dirs = [
-        d for d in bundle_root.iterdir() if d.is_dir() and d.name.isdigit() and len(d.name) == 8
-    ]
+    bundle_dirs = [d for d in bundle_root.iterdir() if d.is_dir() and d.name.isdigit() and len(d.name) == 8]
     bundle_dirs = sorted(bundle_dirs, key=lambda p: p.name)
     if args.limit and args.limit > 0:
         bundle_dirs = bundle_dirs[-args.limit :]
