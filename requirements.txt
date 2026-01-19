@@ -6,4 +6,4 @@ python-dotenv
 joblib
 pytest
 ruff
-black
+black==25.12.0
