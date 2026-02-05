@@ -4,7 +4,3 @@ pyarrow
 PyYAML
 python-dotenv
 joblib
-tweepy
-pytest
-ruff
-black==25.12.0

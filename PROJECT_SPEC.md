@@ -31,6 +31,7 @@
 - レジームゲート採用、SPYはseed必須
 - vol cap はデフォルトOFF（比較実験のみ）。apply_stage=selectionのみ、training+selectionは採用しない
 - 検証NG週は取引停止可。取得は冪等＋直近N日再取得
+- 週次完了後に **X自動投稿（任意・デフォルトOFF）** を実行可能
 
 ---
 
@@ -145,6 +146,31 @@
 - **検証NGの週は取引停止（orders空）**が可能であること
 - 取得は **冪等**（同期間再取得しても重複なし）
 - 遅延/修正吸収：`直近N日を再取得→上書き`（bars/corp actions）
+
+### X自動投稿（任意）
+週次スクリーニングの結果を X に投稿する。**デフォルトOFF**、明示的にONにした場合のみ実行。
+
+**実行タイミング**
+- `scripts/run_weekly.ps1` の最後（KPI更新後）
+
+**入力**
+- 最新の `artifacts/orders/selection_YYYYMMDD.json`
+
+**投稿スクリプト**
+- `scripts/run_post_weekly_x.py`
+  - `--dry-run` で投稿文のみ出力
+  - 文字数は 280 以内に自動調整（銘柄数を削減）
+
+**有効化方法（いずれか）**
+- `.\scripts\run_weekly.ps1 -PostToX`
+- 環境変数 `X_POST_ENABLED=1`
+  - `X_POST_DRY_RUN=1` で常時dry-run
+
+**必要な環境変数（X API）**
+- `X_API_KEY`
+- `X_API_KEY_SECRET`
+- `X_ACCESS_TOKEN`
+- `X_ACCESS_TOKEN_SECRET`
 
 ---
 

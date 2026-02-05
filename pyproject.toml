@@ -15,6 +15,7 @@ dependencies = [
     "PyYAML",
     "python-dotenv",
     "joblib",
+    "tweepy",
 ]
 
 [tool.setuptools]
