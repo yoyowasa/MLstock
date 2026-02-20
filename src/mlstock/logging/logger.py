@@ -75,4 +75,4 @@ def setup_logger(name: str, log_path: Path, level: str) -> logging.Logger:
 
 
 def log_event(logger: logging.Logger, message: str, **fields: Any) -> None:
-    logger.info(message, extra={"fields": fields} if fields else None)
+    logger.info(message, extra=fields if fields else None)

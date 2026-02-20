@@ -233,6 +233,8 @@ def incremental_update(cfg: AppConfig, symbols: Optional[List[str]] = None) -> N
         existing = read_parquet(path)
         if not existing.empty:
             existing["ex_date"] = pd.to_datetime(existing["ex_date"]).dt.date
+            # Keep rows strictly older than the refresh window start so [start, end]
+            # is fully replaced by newly fetched data.
             existing = existing[existing["ex_date"] < start]
         df_all = pd.concat([existing, df_new], ignore_index=True)
     else:

@@ -91,6 +91,7 @@ def _build_weekly_gate(
     if spy_weekly.empty:
         return None
 
+    # Weekly fallback approximates trading weeks as 5 sessions; daily path is preferred when available.
     ma_weeks = max(1, int(round(ma_days / 5)))
     spy_weekly["ma"] = spy_weekly["price"].rolling(ma_weeks, min_periods=ma_weeks).mean()
 

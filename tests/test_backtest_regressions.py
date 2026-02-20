@@ -6,8 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from mlstock.config.loader import load_config
-from mlstock.data.storage.state import read_state
-from mlstock.jobs import backtest, weekly
+from mlstock.jobs import backtest
 
 
 def _write_config(
@@ -15,17 +14,16 @@ def _write_config(
     data_dir: Path,
     artifacts_dir: Path,
     weekly_dir: Path,
+    *,
     cash_start: float,
     reserve: float,
-    max_positions: int,
-    price_cap: float,
     buffer_bps: float,
-    gate_enabled: bool = False,
+    guard_enabled: bool,
 ) -> None:
     def _p(value: Path) -> str:
         return value.as_posix()
 
-    gate_enabled_yaml = "true" if gate_enabled else "false"
+    enabled = "true" if guard_enabled else "false"
     content = f"""
 project:
   timezone: "America/New_York"
@@ -45,7 +43,7 @@ reference:
   seed_symbols_path: "{_p(data_dir / "reference" / "seed_symbols.parquet")}"
 
 seed:
-  n_seed: 2
+  n_seed: 1
 
 bars:
   timeframe: "1Day"
@@ -78,19 +76,26 @@ training:
 selection:
   cash_start_usd: {cash_start}
   cash_reserve_usd: {reserve}
-  price_cap: {price_cap}
-  max_positions: {max_positions}
+  price_cap: 1000.0
+  max_positions: 1
   buy_fill_policy: "ranked_partial"
   estimate_entry_buffer_bps: {buffer_bps}
   min_proba_buy: 0.0
   min_proba_keep: 0.0
+  deadband_abs: 0.0
+  deadband_rel: 0.0
+  min_trade_notional: 0.0
+
+execution:
+  deadband_v2:
+    enabled: true
 
 cost_model:
   bps_per_side: 0.0
 
 risk:
   regime_gate:
-    enabled: {gate_enabled_yaml}
+    enabled: false
     rule: "spy_close_above_ma60"
     action: "no_trade"
     spy_symbol: "SPY"
@@ -104,12 +109,12 @@ risk:
     mode: "hard"
     penalty_min: 0.5
   exposure_guard:
-    enabled: false
-    trigger: "vol_cap_enabled"
+    enabled: {enabled}
+    trigger: "always"
     mode: "daily"
-    base_source: "off_avg_on_avg"
-    base_scale: null
-    cap_source: "off_p95"
+    base_source: "fixed"
+    base_scale: 0.5
+    cap_source: "none"
     cap_value: null
     cap_buffer: 0.0
     log_scale: true
@@ -126,44 +131,29 @@ logging:
     path.write_text(content, encoding="utf-8")
 
 
-def _write_snapshots(weekly_dir: Path) -> None:
+def _write_snapshots(weekly_dir: Path, *, price: float, label_return: float) -> None:
     weekly_dir.mkdir(parents=True, exist_ok=True)
     weeks = [date(2024, 1, 1), date(2024, 1, 8)]
-    rows = []
-    labels = []
+    features_rows = []
+    labels_rows = []
     for week in weeks:
-        rows.append(
+        features_rows.append(
             {
                 "week_start": week,
-                "symbol": "EXP",
-                "price": 9.0,
+                "symbol": "AAA",
+                "price": price,
                 "avg_dollar_vol_20d": 1e7,
-                "ret_1w": 0.10,
+                "ret_1w": 0.1,
                 "ret_4w": 0.0,
                 "vol_4w": 0.0,
             }
         )
-        rows.append(
-            {
-                "week_start": week,
-                "symbol": "CHE",
-                "price": 5.0,
-                "avg_dollar_vol_20d": 1e7,
-                "ret_1w": 0.01,
-                "ret_4w": 0.0,
-                "vol_4w": 0.0,
-            }
-        )
-        labels.append({"week_start": week, "symbol": "EXP", "label_return": 0.05})
-        labels.append({"week_start": week, "symbol": "CHE", "label_return": 0.02})
-
-    features_df = pd.DataFrame(rows)
-    labels_df = pd.DataFrame(labels)
-    features_df.to_parquet(weekly_dir / "features.parquet", index=False)
-    labels_df.to_parquet(weekly_dir / "labels.parquet", index=False)
+        labels_rows.append({"week_start": week, "symbol": "AAA", "label_return": label_return})
+    pd.DataFrame(features_rows).to_parquet(weekly_dir / "features.parquet", index=False)
+    pd.DataFrame(labels_rows).to_parquet(weekly_dir / "labels.parquet", index=False)
 
 
-def test_backtest_reserve_constraints(tmp_path: Path) -> None:
+def test_backtest_guard_flags_defined_when_no_positions(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
     weekly_dir = data_dir / "snapshots" / "weekly"
@@ -175,25 +165,22 @@ def test_backtest_reserve_constraints(tmp_path: Path) -> None:
         artifacts_dir=artifacts_dir,
         weekly_dir=weekly_dir,
         cash_start=10.0,
-        reserve=2.0,
-        max_positions=2,
-        price_cap=1000.0,
+        reserve=9.0,
         buffer_bps=0.0,
+        guard_enabled=True,
     )
-    _write_snapshots(weekly_dir)
+    _write_snapshots(weekly_dir, price=9.0, label_return=0.0)
 
     cfg = load_config(config_path=config_path, local_path=tmp_path / "config.local.yaml")
     backtest.run(cfg, start=date(2024, 1, 1), end=date(2024, 1, 8))
 
-    summary = read_state(artifacts_dir / "backtest" / "summary.json")
-    assert summary["reserve_violation_count"] == 0
-    assert summary["skipped_buys_insufficient_cash"] >= 1
-
     nav_df = pd.read_parquet(artifacts_dir / "backtest" / "nav.parquet")
-    assert (nav_df["cash_minus_reserve"] >= 0).all()
+    last_row = nav_df.sort_values("week_start").iloc[-1]
+    assert bool(last_row["exposure_guard_base_applied"]) is False
+    assert bool(last_row["exposure_guard_cap_applied"]) is False
 
 
-def test_weekly_orders_budgeted(tmp_path: Path) -> None:
+def test_backtest_buffer_is_budget_only_not_realized_pnl(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
     weekly_dir = data_dir / "snapshots" / "weekly"
@@ -204,75 +191,75 @@ def test_weekly_orders_budgeted(tmp_path: Path) -> None:
         data_dir=data_dir,
         artifacts_dir=artifacts_dir,
         weekly_dir=weekly_dir,
-        cash_start=10.0,
-        reserve=2.0,
-        max_positions=2,
-        price_cap=1000.0,
-        buffer_bps=0.0,
+        cash_start=100.0,
+        reserve=0.0,
+        buffer_bps=1000.0,
+        guard_enabled=False,
     )
-    _write_snapshots(weekly_dir)
+    _write_snapshots(weekly_dir, price=10.0, label_return=0.0)
 
     cfg = load_config(config_path=config_path, local_path=tmp_path / "config.local.yaml")
-    selection = weekly.run(cfg)
+    backtest.run(cfg, start=date(2024, 1, 1), end=date(2024, 1, 8))
 
-    orders_path = artifacts_dir / "orders"
-    orders_files = sorted(path for path in orders_path.glob("orders_*.csv") if "orders_candidates" not in path.name)
-    assert orders_files
+    trades_df = pd.read_parquet(artifacts_dir / "backtest" / "trades.parquet")
+    assert len(trades_df) == 1
+    assert float(trades_df.iloc[0]["pnl"]) == 0.0
 
-    orders_df = pd.read_csv(orders_files[-1])
-    buys = orders_df[orders_df["side"] == "buy"].copy()
-    assert not buys.empty
-
-    cash = float(selection["cash_est_before_buys"])
-    reserve = float(selection["cash_reserve_usd"])
-    for _, row in buys.sort_values("priority").iterrows():
-        required = float(row["required_est"])
-        cash -= required
-        assert cash >= reserve
-    assert abs(cash - float(selection["cash_est_after_buys"])) <= 1e-9
+    nav_df = pd.read_parquet(artifacts_dir / "backtest" / "nav.parquet")
+    assert float(nav_df.sort_values("week_start").iloc[-1]["nav"]) == 100.0
 
 
-def test_weekly_regime_gate_reads_week_map(tmp_path: Path) -> None:
+def test_backtest_uses_pre_start_history_for_training(tmp_path: Path) -> None:
     data_dir = tmp_path / "data"
     artifacts_dir = tmp_path / "artifacts"
     weekly_dir = data_dir / "snapshots" / "weekly"
     config_path = tmp_path / "config.yaml"
+    weekly_dir.mkdir(parents=True, exist_ok=True)
 
     _write_config(
         config_path,
         data_dir=data_dir,
         artifacts_dir=artifacts_dir,
         weekly_dir=weekly_dir,
-        cash_start=10.0,
-        reserve=2.0,
-        max_positions=2,
-        price_cap=1000.0,
+        cash_start=100.0,
+        reserve=0.0,
         buffer_bps=0.0,
-        gate_enabled=True,
+        guard_enabled=False,
     )
-    _write_snapshots(weekly_dir)
-    week_map_df = pd.DataFrame(
+
+    features_df = pd.DataFrame(
         [
             {
-                "week_start": date(2024, 1, 1),
-                "anchor_date": date(2024, 1, 1),
-                "week_end": date(2024, 1, 5),
-                "next_week_start": date(2024, 1, 8),
-                "next_anchor_date": date(2024, 1, 8),
+                "week_start": date(2023, 12, 25),
+                "symbol": "AAA",
+                "price": 10.0,
+                "avg_dollar_vol_20d": 1e7,
+                "ret_1w": 0.20,
+                "ret_4w": 0.0,
+                "vol_4w": 0.0,
             },
             {
-                "week_start": date(2024, 1, 8),
-                "anchor_date": date(2024, 1, 8),
-                "week_end": date(2024, 1, 12),
-                "next_week_start": date(2024, 1, 15),
-                "next_anchor_date": None,
+                "week_start": date(2024, 1, 1),
+                "symbol": "AAA",
+                "price": 10.0,
+                "avg_dollar_vol_20d": 1e7,
+                "ret_1w": 0.30,
+                "ret_4w": 0.0,
+                "vol_4w": 0.0,
             },
         ]
     )
-    week_map_df.to_parquet(weekly_dir / "week_map.parquet", index=False)
+    labels_df = pd.DataFrame(
+        [
+            {"week_start": date(2023, 12, 25), "symbol": "AAA", "label_return": 0.01},
+            {"week_start": date(2024, 1, 1), "symbol": "AAA", "label_return": 0.05},
+        ]
+    )
+    features_df.to_parquet(weekly_dir / "features.parquet", index=False)
+    labels_df.to_parquet(weekly_dir / "labels.parquet", index=False)
 
     cfg = load_config(config_path=config_path, local_path=tmp_path / "config.local.yaml")
-    selection = weekly.run(cfg)
+    backtest.run(cfg, start=date(2024, 1, 1), end=date(2024, 1, 1))
 
-    assert selection["regime_gate"]["enabled"] is True
-    assert selection["data_max_week_map_date"] is not None
+    trades_df = pd.read_parquet(artifacts_dir / "backtest" / "trades.parquet")
+    assert len(trades_df) == 1

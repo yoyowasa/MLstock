@@ -15,5 +15,10 @@ def write_parquet_atomic(df: pd.DataFrame, path: Path) -> None:
     os.replace(tmp_path, path)
 
 
-def read_parquet(path: Path) -> pd.DataFrame:
-    return pd.read_parquet(path)
+def read_parquet(path: Path, *, missing_ok: bool = False) -> pd.DataFrame:
+    resolved = Path(path)
+    if not resolved.exists():
+        if missing_ok:
+            return pd.DataFrame()
+        raise FileNotFoundError(f"Parquet file not found: {resolved}")
+    return pd.read_parquet(resolved)

@@ -160,7 +160,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     data_max_week_map_date = None
     week_map_df = None
     if gate_cfg.enabled:
-        week_map_df = read_parquet(snapshots_week_map_path(cfg))
+        week_map_df = read_parquet(snapshots_week_map_path(cfg), missing_ok=True)
         if not week_map_df.empty:
             week_map_df["week_start"] = _to_date(week_map_df["week_start"])
             data_max_week_map_date = max(week_map_df["week_start"])
@@ -303,6 +303,8 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     if not train_weeks:
         raise ValueError("Not enough training weeks for weekly run")
 
+    # Training uses only rows with realized next-week labels; unlabeled rows (for example,
+    # symbols present only for regime context) are intentionally excluded.
     train_df = features_df.merge(labels_df, on=["week_start", "symbol"], how="inner")
     train_df = train_df[train_df["week_start"].isin(train_weeks)]
     if vol_cap_enabled and vol_cap_apply_to_training and not vol_cap_soft:
@@ -442,6 +444,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     min_trade_notional = max(0.0, float(cfg.selection.min_trade_notional))
     deadband_v2_enabled = bool(cfg.execution.deadband_v2.enabled)
     if not deadband_v2_enabled:
+        # Keep effective parameters at zero when disabled so selection payload reports active values.
         deadband_abs = 0.0
         deadband_rel = 0.0
         min_trade_notional = 0.0
@@ -455,10 +458,11 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     sell_orders: List[Dict[str, object]] = []
     unsold_positions: Dict[str, int] = {}
     kept_positions: Dict[str, int] = {}
-    optional_keeps: List[tuple[str, int, float]] = []
+    optional_keeps: List[tuple[str, int, float, int]] = []
     est_proceeds = 0.0
     missing_prices = 0
     ranked_symbols = [str(row.symbol) for row in week_features.itertuples(index=False)]
+    rank_lookup = {symbol: rank for rank, symbol in enumerate(ranked_symbols, start=1)}
     target_symbols = ranked_symbols[:max_positions] if max_positions > 0 else []
     target_set = set(target_symbols)
     held_symbols = set(positions.keys())
@@ -583,7 +587,8 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         if keep:
             kept_positions[symbol] = qty_int
             if symbol not in target_set:
-                optional_keeps.append((symbol, qty_int, est_price))
+                rank_value = rank_lookup.get(symbol, len(ranked_symbols) + 1)
+                optional_keeps.append((symbol, qty_int, est_price, rank_value))
             continue
         sell_cost = est_price * qty_int * cost_rate
         est_proceeds += est_price * qty_int - sell_cost
@@ -600,8 +605,9 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     held_count = len(kept_positions) + len(unsold_positions)
     if max_positions > 0 and held_count > max_positions and optional_keeps:
         excess = held_count - max_positions
-        optional_keeps.sort(key=lambda item: item[2] * item[1], reverse=True)
-        for symbol, qty_int, est_price in optional_keeps[:excess]:
+        # Drop lower-ranked optional keeps first to preserve stronger prediction signals.
+        optional_keeps.sort(key=lambda item: (item[3], item[2] * item[1]), reverse=True)
+        for symbol, qty_int, est_price, _ in optional_keeps[:excess]:
             if symbol not in kept_positions:
                 continue
             del kept_positions[symbol]

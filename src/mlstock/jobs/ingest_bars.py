@@ -76,6 +76,16 @@ def _merge_bars(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
     return merged[BAR_COLUMNS]
 
 
+def _extract_bar_symbol(item: dict) -> Optional[str]:
+    symbol = item.get("S") or item.get("symbol") or item.get("s")
+    if symbol is None:
+        return None
+    text = str(symbol).strip()
+    if not text:
+        return None
+    return text.upper()
+
+
 def _fetch_bars_batch(
     client: AlpacaClient,
     symbols: List[str],
@@ -98,9 +108,26 @@ def _fetch_bars_batch(
         )
         bars = response.get("bars") if isinstance(response, dict) else None
         if isinstance(bars, list):
-            target = symbols[0] if symbols else None
-            if target:
-                collected[target].extend(bars)
+            if len(symbols) == 1:
+                target = symbols[0] if symbols else None
+                if target:
+                    collected[target].extend(bars)
+            else:
+                unresolved = 0
+                for item in bars:
+                    if not isinstance(item, dict):
+                        unresolved += 1
+                        continue
+                    symbol = _extract_bar_symbol(item)
+                    if symbol is None or symbol not in collected:
+                        unresolved += 1
+                        continue
+                    collected[symbol].append(item)
+                if unresolved:
+                    raise RuntimeError(
+                        "Received multi-symbol bars list without per-record symbol keys; "
+                        f"unresolved_records={unresolved}"
+                    )
         elif isinstance(bars, dict):
             for symbol, items in bars.items():
                 if symbol not in collected:

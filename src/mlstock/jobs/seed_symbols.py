@@ -57,7 +57,10 @@ def run(cfg: AppConfig, n_seed: Optional[int] = None) -> pd.DataFrame:
         if spy_row.empty:
             spy_row = pd.DataFrame([{"symbol": spy_symbol, "name": None, "exchange": None}])
         if target and len(df) > 0:
-            df = pd.concat([df.iloc[:-1], spy_row], ignore_index=True)
+            # Reserve one slot for SPY while preserving top-ranked non-SPY rows.
+            keep_n = max(int(target) - 1, 0)
+            non_spy = df[df["symbol"].astype(str) != spy_symbol].head(keep_n)
+            df = pd.concat([non_spy, spy_row], ignore_index=True)
         else:
             df = pd.concat([df, spy_row], ignore_index=True)
         df = df.drop_duplicates("symbol", keep="last").reset_index(drop=True)

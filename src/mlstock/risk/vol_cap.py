@@ -60,6 +60,8 @@ def apply_vol_cap(
 
     hold_mask = pd.Series(False, index=df.index)
     if hold_symbols is not None and hold_threshold is not None:
+        # Hold threshold is never allowed to be stricter than the base threshold.
+        # Callers may pass a looser value (e.g., rank_threshold + hold_buffer).
         hold_threshold = max(float(rank_threshold), float(hold_threshold))
         hold_set: Set[str] = {str(symbol).upper() for symbol in hold_symbols}
         if hold_set and "symbol" in df.columns:

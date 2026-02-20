@@ -338,9 +338,11 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     start = start or date.fromisoformat(cfg.backtest.start_date)
     end = end or date.fromisoformat(cfg.backtest.end_date)
 
-    labels_df = labels_df[(labels_df["week_start"] >= start) & (labels_df["week_start"] <= end)]
-    full_df = features_df.merge(labels_df, on=["week_start", "symbol"], how="inner")
-    weeks = sorted(full_df["week_start"].unique().tolist())
+    eval_labels_df = labels_df[(labels_df["week_start"] >= start) & (labels_df["week_start"] <= end)]
+    model_labels_df = labels_df[labels_df["week_start"] <= end]
+    full_df = features_df.merge(model_labels_df, on=["week_start", "symbol"], how="inner")
+    available_weeks = sorted(full_df["week_start"].unique().tolist())
+    weeks = sorted(eval_labels_df["week_start"].unique().tolist())
 
     gate_cfg = cfg.risk.regime_gate
     gate_action = gate_cfg.action
@@ -352,7 +354,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     gate_closed_weeks = 0
     gate_result = None
     if gate_cfg.enabled:
-        week_map_df = read_parquet(snapshots_week_map_path(cfg))
+        week_map_df = read_parquet(snapshots_week_map_path(cfg), missing_ok=True)
         gate_result = build_spy_regime_gate(cfg, week_map_df, features_df)
         gate_open_by_week = gate_result.open_by_week
         log_event(
@@ -488,6 +490,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     min_trade_notional = max(0.0, float(cfg.selection.min_trade_notional))
     deadband_v2_enabled = bool(cfg.execution.deadband_v2.enabled)
     if not deadband_v2_enabled:
+        # Keep effective parameters at zero when disabled so audit fields reflect the executed behavior.
         deadband_abs = 0.0
         deadband_rel = 0.0
         min_trade_notional = 0.0
@@ -522,7 +525,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     continue
 
         train_weeks = select_training_weeks(
-            weeks,
+            available_weeks,
             week,
             train_window_years=cfg.training.train_window_years,
             min_train_weeks=cfg.training.min_train_weeks,
@@ -808,19 +811,20 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     continue
             realized_return = float(row.label_return)
             buy_cost = entry_price * cost_rate
-            required = entry_price * (1.0 + buffer_bps / 10000.0) + buy_cost
-            if cash_after_buys - reserve < required:
+            budget_required = entry_price * (1.0 + buffer_bps / 10000.0) + buy_cost
+            if cash_after_buys - reserve < budget_required:
                 skipped_buys += 1
                 if buy_fill_policy == "ranked_strict":
                     break
                 continue
-            cash_after_buys -= required
-            total_required += required
+            actual_required = entry_price + buy_cost
+            cash_after_buys -= actual_required
+            total_required += actual_required
 
             exit_price = entry_price * (1.0 + realized_return)
             sell_cost = exit_price * cost_rate
             proceeds = exit_price - sell_cost
-            pnl = proceeds - required
+            pnl = proceeds - actual_required
             positions_value += exit_price
             sell_costs_total += sell_cost
             total_pnl += pnl
@@ -842,9 +846,9 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
             )
 
         exposure_guard_scale = 1.0
+        base_applied = False
+        cap_applied = False
         if guard_enabled and guard_active and positions_value > 0.0:
-            base_applied = False
-            cap_applied = False
             if guard_base_scale < 1.0:
                 exposure_guard_scale *= guard_base_scale
                 base_applied = True
@@ -859,6 +863,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                 cash_after_buys = cash - total_required
 
             if guard_cap_enabled and gross_cap is not None:
+                # Cap is evaluated on the same net NAV definition used for end-of-week cash accounting.
                 nav_raw = cash_after_buys + positions_value - sell_costs_total
                 if nav_raw > 0.0:
                     gross_raw = positions_value / nav_raw

@@ -72,6 +72,8 @@ def _build_weekly_table(
 
     weekly = weekly.sort_values("week_start").reset_index(drop=True)
     weekly["price"] = weekly[price_col]
+    # This function is called per symbol, so pct_change/rolling never crosses symbols.
+    # Initial NaNs are intentional warm-up periods and are filtered downstream when needed.
     weekly["ret_1w"] = weekly["price"].pct_change()
     weekly["ret_4w"] = weekly["price"].pct_change(4)
     weekly["vol_4w"] = weekly["ret_1w"].rolling(4, min_periods=4).std()
@@ -111,6 +113,9 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
     features_frames: List[pd.DataFrame] = []
     labels_frames: List[pd.DataFrame] = []
     universe_frames: List[pd.DataFrame] = []
+    feature_output_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"] + list(FEATURE_COLUMNS)
+    label_output_cols = ["week_start", "symbol", "label_return"]
+    universe_output_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"]
 
     for symbol in symbols:
         if exclude_symbols and str(symbol).upper() in exclude_symbols:
@@ -135,11 +140,10 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
             continue
         weekly["symbol"] = symbol
 
-        features_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"] + list(FEATURE_COLUMNS)
-        for column in features_cols:
+        for column in feature_output_cols:
             if column not in weekly.columns:
                 weekly[column] = None
-        features_frames.append(weekly[features_cols])
+        features_frames.append(weekly[feature_output_cols])
 
         labels = weekly[["week_start", "symbol", "label_return"]].dropna(subset=["label_return"])
         labels_frames.append(labels)
@@ -159,26 +163,38 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
         if not universe_df.empty:
             universe_df = universe_df[~universe_df["symbol"].astype(str).str.upper().isin(exclude_symbols)]
 
-    if not features_df.empty:
+    if features_df.empty:
+        features_df = pd.DataFrame(columns=feature_output_cols)
+    else:
+        for column in feature_output_cols:
+            if column not in features_df.columns:
+                features_df[column] = None
+        features_df = features_df[feature_output_cols]
         features_df = features_df.sort_values(["week_start", "symbol"]).reset_index(drop=True)
-        write_parquet_atomic(features_df, snapshots_features_path(cfg))
-    else:
-        write_parquet_atomic(features_df, snapshots_features_path(cfg))
+    write_parquet_atomic(features_df, snapshots_features_path(cfg))
 
-    if not labels_df.empty:
+    if labels_df.empty:
+        labels_df = pd.DataFrame(columns=label_output_cols)
+    else:
+        for column in label_output_cols:
+            if column not in labels_df.columns:
+                labels_df[column] = None
+        labels_df = labels_df[label_output_cols]
         labels_df = labels_df.sort_values(["week_start", "symbol"]).reset_index(drop=True)
-        write_parquet_atomic(labels_df, snapshots_labels_path(cfg))
-    else:
-        write_parquet_atomic(labels_df, snapshots_labels_path(cfg))
+    write_parquet_atomic(labels_df, snapshots_labels_path(cfg))
 
-    if not universe_df.empty:
+    if universe_df.empty:
+        universe_df = pd.DataFrame(columns=universe_output_cols)
+    else:
+        for column in universe_output_cols:
+            if column not in universe_df.columns:
+                universe_df[column] = None
+        universe_df = universe_df[universe_output_cols]
         universe_df = universe_df.sort_values(["week_start", "symbol"]).reset_index(drop=True)
         universe_df = universe_df[
             universe_df["avg_dollar_vol_20d"].fillna(0) >= float(cfg.snapshots.min_avg_dollar_vol_20d)
         ]
-        write_parquet_atomic(universe_df, snapshots_universe_path(cfg))
-    else:
-        write_parquet_atomic(universe_df, snapshots_universe_path(cfg))
+    write_parquet_atomic(universe_df, snapshots_universe_path(cfg))
 
     counts = {
         "weeks": int(len(week_map)),

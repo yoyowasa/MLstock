@@ -199,7 +199,7 @@ Get-Content $log.FullName -Tail 50
 - `level`：INFO/WARN/ERROR
 - `logger`：logger名（weekly）
 - `message`：イベント名（start/complete/validation_failed など）
-- `fields`：追加情報（buys/sells/orders など）
+- 追加情報はトップレベルキー（例：`buys` / `sells` / `orders`）
 
 #### deadband_weekly_kpi.csv（KPI時系列）
 - `selection_file`：集計元のselectionファイル名
