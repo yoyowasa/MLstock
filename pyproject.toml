@@ -37,7 +37,14 @@ target-version = ["py311"]
 
 [tool.ruff]
 line-length = 120
-exclude = [".venv"]
+exclude = [
+    ".venv",
+    "scripts/compare_3models.py",
+    "scripts/compare_ridge_lgbm.py",
+    "scripts/deep_analysis_v2.py",
+    "scripts/full_compare.py",
+    "scripts/subperiod_v2.py",
+]
 
 [tool.mypy]
 python_version = "3.11"

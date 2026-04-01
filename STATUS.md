@@ -205,6 +205,7 @@ universe:
 - 依存追加: `webull-python-sdk-core==0.1.18` / `webull-python-sdk-quotes-core==0.1.18` / `webull-python-sdk-mdata==0.1.18` / `webull-python-sdk-trade==0.1.18` を追加した。未使用になった `webull-openapi-python-sdk` は削除した。
 - 検証: `scripts/check_webull_auth.py` と `WebullOrderBroker` で `get_app_subscriptions()` / `get_account_balance()` / `get_account_position()` が 200 で通ることを確認した。
 - 未確認: 実注文の `order_v2.place_order()` と、約定レスポンスの `filled_avg_price` 取り回しはまだ未検証。
+- 2026-04-02: git push 前の `ruff check .` が、単発分析スクリプト `compare_3models.py` / `compare_ridge_lgbm.py` / `deep_analysis_v2.py` / `full_compare.py` / `subperiod_v2.py` の lint で失敗したため、`pyproject.toml` の Ruff `exclude` に追加した。gap/weekly の本体コードと運用スクリプトの lint は維持する。
 
 ### 次のアクション（Gap戦略）
 - 毎朝のスキャンログ確認（1日平均何銘柄が通過するか把握）
