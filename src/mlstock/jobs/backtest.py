@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -16,7 +16,7 @@ from mlstock.data.storage.paths import (
 from mlstock.data.storage.state import write_state
 from mlstock.logging.logger import build_log_path, log_event, setup_logger
 from mlstock.model.features import FEATURE_COLUMNS
-from mlstock.model.train import predict_linear_model, select_training_weeks, train_linear_model
+from mlstock.model.train import predict_model, select_training_weeks, train_model
 from mlstock.risk.regime import build_spy_regime_gate
 from mlstock.risk.vol_cap import apply_vol_cap, apply_vol_penalty
 
@@ -341,6 +341,10 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     eval_labels_df = labels_df[(labels_df["week_start"] >= start) & (labels_df["week_start"] <= end)]
     model_labels_df = labels_df[labels_df["week_start"] <= end]
     full_df = features_df.merge(model_labels_df, on=["week_start", "symbol"], how="inner")
+    if "label_return_raw" not in full_df.columns:
+        full_df["label_return_raw"] = full_df["label_return"]
+    else:
+        full_df["label_return_raw"] = full_df["label_return_raw"].fillna(full_df["label_return"])
     available_weeks = sorted(full_df["week_start"].unique().tolist())
     weeks = sorted(eval_labels_df["week_start"].unique().tolist())
 
@@ -481,9 +485,10 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
     guard_scales: List[float] = []
     guard_base_applied_weeks = 0
     guard_cap_applied_weeks = 0
-    prev_selected_symbols: Set[str] = set()
+    prev_positions: Dict[str, Dict[str, float]] = {}
 
     cost_rate = float(cfg.cost_model.bps_per_side) / 10000.0
+    min_cost = float(cfg.cost_model.min_cost_usd_per_side)
     buffer_bps = float(cfg.selection.estimate_entry_buffer_bps)
     deadband_abs = max(0.0, float(cfg.selection.deadband_abs))
     deadband_rel = max(0.0, float(cfg.selection.deadband_rel))
@@ -495,6 +500,9 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
         deadband_rel = 0.0
         min_trade_notional = 0.0
     max_positions = max(int(cfg.selection.max_positions), 1)
+    min_positions = max(int(cfg.selection.min_positions), 1)
+    confidence_sizing = bool(cfg.selection.confidence_sizing)
+    confidence_threshold = float(cfg.selection.confidence_threshold)
     buy_fill_policy = cfg.selection.buy_fill_policy
     if buy_fill_policy not in ("ranked_partial", "ranked_strict"):
         log_event(logger, "unknown_buy_fill_policy", value=buy_fill_policy)
@@ -521,7 +529,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                             "exposure_guard_cap_applied": False,
                         }
                     )
-                    prev_selected_symbols = set()
+                    prev_positions = {}
                     continue
 
         train_weeks = select_training_weeks(
@@ -545,7 +553,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "exposure_guard_cap_applied": False,
                 }
             )
-            prev_selected_symbols = set()
+            prev_positions = {}
             continue
 
         train_df = full_df[full_df["week_start"].isin(train_weeks)]
@@ -576,9 +584,19 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                         "exposure_guard_cap_applied": False,
                     }
                 )
-                prev_selected_symbols = set()
+                prev_positions = {}
                 continue
-        model = train_linear_model(train_df, FEATURE_COLUMNS, "label_return")
+        model = train_model(
+            train_df,
+            FEATURE_COLUMNS,
+            "label_return",
+            model_type=cfg.training.model_type,
+            ridge_alpha=cfg.training.ridge_alpha,
+            ensemble_weight_ridge=cfg.training.ensemble_weight_ridge,
+            lgbm_n_estimators=cfg.training.lgbm_n_estimators,
+            lgbm_max_depth=cfg.training.lgbm_max_depth,
+            lgbm_learning_rate=cfg.training.lgbm_learning_rate,
+        )
         if model is None:
             cash_minus_reserve = cash - reserve
             nav_rows.append(
@@ -594,7 +612,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "exposure_guard_cap_applied": False,
                 }
             )
-            prev_selected_symbols = set()
+            prev_positions = {}
             continue
 
         week_features = full_df[full_df["week_start"] == week].copy()
@@ -613,7 +631,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "exposure_guard_cap_applied": False,
                 }
             )
-            prev_selected_symbols = set()
+            prev_positions = {}
             continue
 
         week_features = week_features[
@@ -621,7 +639,8 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
         ]
         week_features = week_features[week_features["price"].notna()]
         week_features = week_features[week_features["price"] <= float(cfg.selection.price_cap)]
-        week_features = week_features.dropna(subset=list(FEATURE_COLUMNS) + ["label_return"])
+        week_features = week_features[week_features["price"] >= float(cfg.snapshots.min_price)]
+        week_features = week_features.dropna(subset=list(FEATURE_COLUMNS) + ["label_return", "label_return_raw"])
 
         if week_features.empty:
             cash_minus_reserve = cash - reserve
@@ -638,7 +657,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "exposure_guard_cap_applied": False,
                 }
             )
-            prev_selected_symbols = set()
+            prev_positions = {}
             continue
 
         use_vol_penalty = vol_cap_enabled and vol_cap_apply_to_selection and vol_cap_soft
@@ -648,7 +667,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     week_features,
                     feature_name=vol_cap_cfg.feature_name,
                     rank_threshold=vol_cap_cfg.rank_threshold,
-                    hold_symbols=prev_selected_symbols,
+                    hold_symbols=set(prev_positions.keys()),
                     hold_threshold=vol_cap_hold_threshold,
                     enabled=vol_cap_enabled,
                 )
@@ -675,10 +694,10 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                         "exposure_guard_cap_applied": False,
                     }
                 )
-                prev_selected_symbols = set()
+                prev_positions = {}
                 continue
 
-        preds = predict_linear_model(model, week_features, FEATURE_COLUMNS)
+        preds = predict_model(model, week_features, FEATURE_COLUMNS)
         week_features = week_features.assign(pred_return=preds)
 
         if use_vol_penalty:
@@ -714,7 +733,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                         "exposure_guard_cap_applied": False,
                     }
                 )
-                prev_selected_symbols = set()
+                prev_positions = {}
                 continue
             week_features = week_features.assign(pred_return_raw=week_features["pred_return"])
             week_features = week_features.assign(
@@ -752,7 +771,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                         "exposure_guard_cap_applied": False,
                     }
                 )
-                prev_selected_symbols = set()
+                prev_positions = {}
                 continue
 
         week_features = week_features.sort_values("pred_return", ascending=False)
@@ -775,63 +794,160 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                         "exposure_guard_cap_applied": False,
                     }
                 )
-                prev_selected_symbols = set()
+                prev_positions = {}
                 continue
 
-        cash_after_buys = cash
+        week_trade_start = len(trades)
         positions_value = 0.0
         sell_costs_total = 0.0
         positions_count = 0
         total_required = 0.0
         total_pnl = 0.0
-        week_trade_start = len(trades)
-        selected_symbols: List[str] = []
-        nav_est = cash if cash > 0 else 0.0
 
-        target_rows = week_features.head(max_positions)
-        target_weights = pd.Series(dtype=float)
+        week_price_lookup = {
+            str(row.symbol): float(row.price)
+            for row in week_features[["symbol", "price"]].dropna(subset=["price"]).itertuples(index=False)
+        }
+        week_return_lookup = {
+            str(row.symbol): float(row.label_return_raw)
+            for row in week_features[["symbol", "label_return_raw"]]
+            .dropna(subset=["label_return_raw"])
+            .itertuples(index=False)
+        }
+        # Variable N: 信頼度ベースのポジション数決定
+        if confidence_sizing:
+            confident = week_features[week_features["pred_return"] > confidence_threshold]
+            n_confident = len(confident)
+            n_target = max(min_positions, min(n_confident, max_positions))
+        else:
+            n_target = max_positions
+        target_rows = week_features.head(n_target)
+        target_set = {str(row.symbol) for row in target_rows.itertuples(index=False)}
+
+        nav_est = cash if cash > 0 else 0.0
+        for symbol, pos_info in prev_positions.items():
+            current_price = week_price_lookup.get(symbol, float(pos_info.get("entry_price", 0.0)))
+            nav_est += float(current_price)
+
         sum_abs_dw_raw = 0.0
-        if nav_est > 0.0 and not target_rows.empty:
-            target_weights = pd.to_numeric(target_rows["price"], errors="coerce").fillna(0.0) / nav_est
-            sum_abs_dw_raw = float(target_weights.abs().sum())
         sum_abs_dw_filtered = 0.0
 
-        for row, target_weight in zip(target_rows.itertuples(index=False), target_weights):
-            if positions_count >= max_positions:
+        # SELL/KEEP phase
+        cash_after_sells = cash
+        kept_this_week: Dict[str, Dict[str, float]] = {}
+        for symbol, pos_info in prev_positions.items():
+            current_price = week_price_lookup.get(symbol, float(pos_info.get("entry_price", 0.0)))
+            current_price = float(current_price)
+            realized_return = float(week_return_lookup.get(symbol, 0.0))
+            exit_price = current_price * (1.0 + realized_return)
+
+            # 既存保有の元本を先に拘束し、SELL時に戻す。
+            cash_after_sells -= current_price
+
+            w_cur = current_price / nav_est if nav_est > 0.0 else 0.0
+            w_tgt = w_cur if symbol in target_set else 0.0
+            delta = w_tgt - w_cur
+            sum_abs_dw_raw += abs(delta)
+
+            keep = False
+            if symbol in target_set:
+                keep = True
+            elif max_positions == 0:
+                keep = False
+            elif deadband_v2_enabled:
+                band = max(deadband_abs, deadband_rel * abs(w_tgt))
+                if abs(delta) < band:
+                    keep = True
+                elif min_trade_notional > 0.0 and w_cur != 0.0 and w_tgt != 0.0 and abs(delta) < min_trade_notional:
+                    keep = True
+
+            if keep:
+                kept_this_week[symbol] = {
+                    "entry_price": current_price,
+                    "exit_price": exit_price,
+                }
+                positions_value += exit_price
+                total_pnl += exit_price - current_price
+                positions_count += 1
+                trades.append(
+                    {
+                        "week_start": week,
+                        "symbol": symbol,
+                        "entry_price": current_price,
+                        "exit_price": exit_price,
+                        "return": realized_return,
+                        "buy_cost": 0.0,
+                        "sell_cost": 0.0,
+                        "pnl": exit_price - current_price,
+                    }
+                )
+                continue
+
+            sum_abs_dw_filtered += abs(delta)
+            sell_cost = max(exit_price * cost_rate, min_cost)
+            cash_after_sells += exit_price - sell_cost
+            total_pnl += (exit_price - sell_cost) - current_price
+            trades.append(
+                {
+                    "week_start": week,
+                    "symbol": symbol,
+                    "entry_price": current_price,
+                    "exit_price": exit_price,
+                    "return": realized_return,
+                    "buy_cost": 0.0,
+                    "sell_cost": sell_cost,
+                    "pnl": (exit_price - sell_cost) - current_price,
+                }
+            )
+
+        # BUY phase
+        cash_after_buys = cash_after_sells
+        new_buys: Dict[str, Dict[str, float]] = {}
+        for row in target_rows.itertuples(index=False):
+            if positions_count >= n_target:
                 break
+            symbol = str(row.symbol)
+            if symbol in kept_this_week:
+                continue
+
             entry_price = float(row.price)
-            w_cur = 0.0
-            w_tgt = float(target_weight)
-            dw = w_tgt - w_cur
+            nav_est_buy = cash_after_buys
+            if kept_this_week:
+                nav_est_buy += sum(float(item["entry_price"]) for item in kept_this_week.values())
+            if new_buys:
+                nav_est_buy += sum(float(item["entry_price"]) for item in new_buys.values())
+            w_tgt = entry_price / nav_est_buy if nav_est_buy > 0.0 else 0.0
+            sum_abs_dw_raw += abs(w_tgt)
+
             if deadband_v2_enabled:
                 band = max(deadband_abs, deadband_rel * abs(w_tgt))
-                if abs(dw) < band:
+                if abs(w_tgt) < band:
                     continue
-                if min_trade_notional > 0.0 and w_cur != 0.0 and w_tgt != 0.0 and abs(dw) < min_trade_notional:
-                    continue
-            realized_return = float(row.label_return)
-            buy_cost = entry_price * cost_rate
+
+            buy_cost = max(entry_price * cost_rate, min_cost)
             budget_required = entry_price * (1.0 + buffer_bps / 10000.0) + buy_cost
             if cash_after_buys - reserve < budget_required:
                 skipped_buys += 1
                 if buy_fill_policy == "ranked_strict":
                     break
                 continue
+
             actual_required = entry_price + buy_cost
             cash_after_buys -= actual_required
             total_required += actual_required
 
+            realized_return = float(row.label_return_raw)
             exit_price = entry_price * (1.0 + realized_return)
-            sell_cost = exit_price * cost_rate
-            proceeds = exit_price - sell_cost
-            pnl = proceeds - actual_required
+            pnl = exit_price - actual_required
             positions_value += exit_price
-            sell_costs_total += sell_cost
             total_pnl += pnl
             positions_count += 1
-            selected_symbols.append(str(row.symbol))
-            sum_abs_dw_filtered += abs(dw)
+            sum_abs_dw_filtered += abs(w_tgt)
 
+            new_buys[symbol] = {
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+            }
             trades.append(
                 {
                     "week_start": week,
@@ -840,7 +956,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     "exit_price": exit_price,
                     "return": realized_return,
                     "buy_cost": buy_cost,
-                    "sell_cost": sell_cost,
+                    "sell_cost": 0.0,
                     "pnl": pnl,
                 }
             )
@@ -860,7 +976,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                 positions_value *= guard_base_scale
                 sell_costs_total *= guard_base_scale
                 total_pnl *= guard_base_scale
-                cash_after_buys = cash - total_required
+                cash_after_buys = cash_after_sells - total_required
 
             if guard_cap_enabled and gross_cap is not None:
                 # Cap is evaluated on the same net NAV definition used for end-of-week cash accounting.
@@ -870,7 +986,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                     if gross_raw > gross_cap:
                         denom = positions_value - gross_cap * total_pnl
                         if denom > 0.0:
-                            cap_scale = (gross_cap * cash) / denom
+                            cap_scale = (gross_cap * cash_after_sells) / denom
                         else:
                             cap_scale = gross_cap / gross_raw
                         cap_scale = max(0.0, min(1.0, cap_scale))
@@ -885,7 +1001,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
                             positions_value *= cap_scale
                             sell_costs_total *= cap_scale
                             total_pnl *= cap_scale
-                            cash_after_buys = cash - total_required
+                            cash_after_buys = cash_after_sells - total_required
 
             if exposure_guard_scale < 1.0:
                 guard_scales.append(exposure_guard_scale)
@@ -900,7 +1016,11 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
 
         cash = cash_after_buys + positions_value - sell_costs_total
         nav = cash
-        prev_selected_symbols = set(selected_symbols) if selected_symbols else set()
+        prev_positions = {}
+        for symbol, pos in kept_this_week.items():
+            prev_positions[symbol] = {"entry_price": float(pos["exit_price"])}
+        for symbol, pos in new_buys.items():
+            prev_positions[symbol] = {"entry_price": float(pos["exit_price"])}
         nav_row = {
             "week_start": week,
             "nav": nav,

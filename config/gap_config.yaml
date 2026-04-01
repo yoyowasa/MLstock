@@ -1,0 +1,39 @@
+gap:
+  min_gap_pct: 5.0
+  max_gap_pct: 20.0
+  min_volume_pace_ratio: 1.5
+  min_avg_volume_30d: 100000
+  max_scan_candidates: 10
+  lookback_volume_days: 30
+  market_cap_source: yfinance
+
+options:
+  min_call_volume: 100
+  min_call_oi_ratio: 0.25
+  min_call_put_ratio: 1.8
+  yfinance_delay_sec: 2.0
+  min_expiry_days: 1
+  allow_error_fallback: false
+
+entry:
+  max_candidates: 3
+  pullback_from_open_pct: 2.0
+  vwap_tolerance_pct: 1.0
+  low_volume_ratio: 0.5
+  risk_per_trade_usd: 50.0
+  dry_run_cash_usd: 10000.0
+  max_notional_per_trade_usd: 0.0
+  min_order_qty: 1
+
+exit:
+  target_pct: 4.0
+  stop_pct: 2.0
+  time_cut_hour: 14
+  force_close_hour: 15
+  force_close_minute: 30
+
+universe:
+  use_mlstock_seed: true
+  min_price: 5.0
+  max_price: 100.0
+  min_market_cap_m: 300

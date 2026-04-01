@@ -20,6 +20,31 @@ SEED_COLUMNS = [
 ]
 
 
+def _is_leveraged_etf(name: str) -> bool:
+    """銘柄名からレバレッジ/インバースETFを検出する。"""
+    if not name:
+        return False
+    name_upper = str(name).upper()
+    patterns = [
+        "2X",
+        "3X",
+        "-2X",
+        "-3X",
+        "ULTRA",
+        "ULTRAPRO",
+        "ULTRASHORT",
+        "INVERSE",
+        "BEAR",
+        "BULL",
+        "DAILY",
+        "DIREXION",
+        "PROSHARES",
+        "LEVERAGED",
+        "SHORT",
+    ]
+    return any(pattern in name_upper for pattern in patterns)
+
+
 def run(cfg: AppConfig, n_seed: Optional[int] = None) -> pd.DataFrame:
     log_path = build_log_path(cfg, "seed_symbols")
     logger = setup_logger("seed_symbols", log_path, cfg.logging.level)
@@ -42,6 +67,16 @@ def run(cfg: AppConfig, n_seed: Optional[int] = None) -> pd.DataFrame:
         df = df[df["asset_class"] == "us_equity"]
     else:
         log_event(logger, "missing_asset_class_column")
+
+    # レバレッジ/インバースETFを名称ベースで除外する。
+    if "name" in df.columns:
+        before = len(df)
+        df = df[~df["name"].fillna("").astype(str).apply(_is_leveraged_etf)]
+        removed = before - len(df)
+        if removed > 0:
+            log_event(logger, "leveraged_etf_filtered", rows=int(removed))
+    else:
+        log_event(logger, "missing_name_column")
 
     df = df[df["symbol"].notna()]
     df = df.drop_duplicates("symbol").sort_values("symbol").reset_index(drop=True)

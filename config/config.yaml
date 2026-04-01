@@ -1,104 +1,142 @@
 project:
-  timezone: "America/New_York"
-  start_date: "2016-01-01"
-
+  timezone: America/New_York
+  start_date: '2016-01-01'
 alpaca:
-  trading_base_url: "https://paper-api.alpaca.markets"
-  data_base_url: "https://data.alpaca.markets"
-
+  trading_base_url: https://paper-api.alpaca.markets
+  data_base_url: https://data.alpaca.markets
 paths:
-  data_dir: "data"
-  artifacts_dir: "artifacts"
-
+  data_dir: data
+  artifacts_dir: artifacts
 reference:
-  assets_path: "data/reference/assets.parquet"
-  calendar_path: "data/reference/calendar.parquet"
-  seed_symbols_path: "data/reference/seed_symbols.parquet"
-
+  assets_path: data/reference/assets.parquet
+  calendar_path: data/reference/calendar.parquet
+  seed_symbols_path: data/reference/seed_symbols.parquet
 seed:
   n_seed: 2000
-
 bars:
-  timeframe: "1Day"
-  feed: "iex"
-  adjustment: "raw"
-  asof: "-"
-  backfill_start: "2016-01-01"
+  timeframe: 1Day
+  feed: iex
+  adjustment: raw
+  asof: '-'
+  backfill_start: '2016-01-01'
   lookback_days: 20
-  mode: "multi_symbol"
+  mode: multi_symbol
   batch_size: 200
   max_workers: 4
-
 corp_actions:
-  backfill_start: "2016-01-01"
+  backfill_start: '2016-01-01'
   lookback_days: 120
   batch_size: 200
   max_workers: 2
-
 snapshots:
-  weekly_dir: "data/snapshots/weekly"
+  weekly_dir: data/snapshots/weekly
   min_avg_dollar_vol_20d: 1000000
+  min_price: 5.0
   min_trading_days: 20
   feature_lookback_days: 20
   exclude_symbols:
-    - "SPY"
-
+  - SPY
+  - TQQQ
+  - SQQQ
+  - UPRO
+  - SPXU
+  - QLD
+  - QID
+  - UDOW
+  - SDOW
+  - TNA
+  - TZA
+  - LABU
+  - LABD
+  - SOXL
+  - SOXS
+  - NUGT
+  - DUST
+  - JNUG
+  - JDST
+  - FNGU
+  - FNGD
+  - TECL
+  - TECS
+  - FAS
+  - FAZ
+  - ERX
+  - ERY
+  - UVXY
+  - SVXY
+  - VIXY
+  - SPXS
+  - UCO
+  - SCO
+  - BOIL
+  - KOLD
+  - AMDL
+  - CONL
+  - NVDL
+  - TSLL
+  - MSFU
+  - AMZU
+  - GOOGL2X
 training:
   train_window_years: 4
   min_train_weeks: 52
-
+  model_type: "ensemble"
+  ridge_alpha: 1.0
+  ensemble_weight_ridge: 0.7
+weekly:
+  labels:
+    benchmark_symbol: SPY
+    use_excess: true
 selection:
   cash_start_usd: 1000
   cash_reserve_usd: 100
   price_cap: 60
   max_positions: 15
-  buy_fill_policy: "ranked_partial"
+  min_positions: 5
+  confidence_sizing: true
+  confidence_threshold: 0.005
+  buy_fill_policy: ranked_partial
   estimate_entry_buffer_bps: 100
   min_proba_buy: 0.0
   min_proba_keep: 0.0
   deadband_abs: 0.0025
   deadband_rel: 0.0
   min_trade_notional: 0.0
-
 execution:
   deadband_v2:
     enabled: true
-
 cost_model:
-  bps_per_side: 2.0
-
+  bps_per_side: 5.0
+  min_cost_usd_per_side: 0.01
 risk:
   regime_gate:
     enabled: true
-    rule: "spy_close_above_ma60"
-    action: "no_trade"
-    spy_symbol: "SPY"
+    rule: spy_close_above_ma60
+    action: no_trade
+    spy_symbol: SPY
     ma_days: 60
     pred_return_floor: 0.0
   vol_cap:
     enabled: false
     rank_threshold: 0.7
-    apply_stage: "selection"
-    feature_name: "vol_4w"
-    mode: "hard"
+    apply_stage: selection
+    feature_name: vol_4w
+    mode: hard
     penalty_min: 0.5
   exposure_guard:
     enabled: false
-    trigger: "vol_cap_enabled"
-    mode: "daily"
-    base_source: "off_avg_on_avg"
+    trigger: vol_cap_enabled
+    mode: daily
+    base_source: off_avg_on_avg
     base_scale: null
-    cap_source: "off_p95"
+    cap_source: off_p95
     cap_value: null
     cap_buffer: 0.0
     log_scale: true
-
 backtest:
-  # Evaluation lower bound; actual first evaluated week depends on label availability.
-  start_date: "2018-01-01"
-  end_date: "2024-12-31"
+  start_date: '2018-01-01'
+  end_date: '2024-12-31'
   initial_cash_usd: 1000
-
 logging:
-  level: "INFO"
+  level: INFO
   jsonl: true

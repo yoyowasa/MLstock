@@ -21,7 +21,7 @@ from mlstock.data.storage.paths import (
 from mlstock.data.storage.state import read_state, write_state
 from mlstock.logging.logger import build_log_path, log_event, setup_logger
 from mlstock.model.features import FEATURE_COLUMNS
-from mlstock.model.train import predict_linear_model, select_training_weeks, train_linear_model
+from mlstock.model.train import predict_model, select_training_weeks, train_model
 from mlstock.risk.regime import build_spy_regime_gate
 from mlstock.risk.vol_cap import apply_vol_cap, apply_vol_penalty
 
@@ -322,7 +322,17 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         if train_df.empty:
             raise ValueError("No training data after vol cap filtering")
 
-    model = train_linear_model(train_df, FEATURE_COLUMNS, "label_return")
+    model = train_model(
+        train_df,
+        FEATURE_COLUMNS,
+        "label_return",
+        model_type=cfg.training.model_type,
+        ridge_alpha=cfg.training.ridge_alpha,
+        ensemble_weight_ridge=cfg.training.ensemble_weight_ridge,
+        lgbm_n_estimators=cfg.training.lgbm_n_estimators,
+        lgbm_max_depth=cfg.training.lgbm_max_depth,
+        lgbm_learning_rate=cfg.training.lgbm_learning_rate,
+    )
     if model is None:
         raise ValueError("Training failed for weekly run")
 
@@ -334,6 +344,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     week_features = week_features.dropna(subset=FEATURE_COLUMNS)
     week_features = week_features[week_features["price"].notna()]
     week_features = week_features[week_features["price"] <= float(cfg.selection.price_cap)]
+    week_features = week_features[week_features["price"] >= float(cfg.snapshots.min_price)]
 
     if week_features.empty:
         raise ValueError("No eligible symbols for weekly selection")
@@ -362,7 +373,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         if week_features.empty:
             raise ValueError("No eligible symbols after vol cap filtering")
 
-    preds = predict_linear_model(model, week_features, FEATURE_COLUMNS)
+    preds = predict_model(model, week_features, FEATURE_COLUMNS)
     week_features = week_features.assign(pred_return=preds)
 
     if use_vol_penalty:
@@ -430,6 +441,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
 
     price_lookup = dict(zip(week_all["symbol"], week_all["price"]))
     cost_rate = float(cfg.cost_model.bps_per_side) / 10000.0
+    min_cost = float(cfg.cost_model.min_cost_usd_per_side)
     reserve = float(cfg.selection.cash_reserve_usd)
     buffer_bps = float(cfg.selection.estimate_entry_buffer_bps)
     buy_fill_policy = cfg.selection.buy_fill_policy
@@ -437,6 +449,9 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         log_event(logger, "unknown_buy_fill_policy", value=buy_fill_policy)
         buy_fill_policy = "ranked_partial"
     max_positions = max(int(cfg.selection.max_positions), 1)
+    min_positions = max(int(cfg.selection.min_positions), 1)
+    confidence_sizing = bool(cfg.selection.confidence_sizing)
+    confidence_threshold = float(cfg.selection.confidence_threshold)
     if gate_cfg.enabled and not gate_open and gate_action == "no_trade":
         max_positions = 0
     deadband_abs = max(0.0, float(cfg.selection.deadband_abs))
@@ -463,7 +478,14 @@ def run(cfg: AppConfig) -> Dict[str, object]:
     missing_prices = 0
     ranked_symbols = [str(row.symbol) for row in week_features.itertuples(index=False)]
     rank_lookup = {symbol: rank for rank, symbol in enumerate(ranked_symbols, start=1)}
-    target_symbols = ranked_symbols[:max_positions] if max_positions > 0 else []
+    # Variable N: 信頼度ベースのポジション数決定
+    if confidence_sizing and max_positions > 0:
+        confident = week_features[week_features["pred_return"] > confidence_threshold]
+        n_confident = len(confident)
+        n_target = max(min_positions, min(n_confident, max_positions))
+    else:
+        n_target = max_positions
+    target_symbols = ranked_symbols[:n_target] if n_target > 0 else []
     target_set = set(target_symbols)
     held_symbols = set(positions.keys())
     sum_abs_dw_raw = 0.0
@@ -590,7 +612,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
                 rank_value = rank_lookup.get(symbol, len(ranked_symbols) + 1)
                 optional_keeps.append((symbol, qty_int, est_price, rank_value))
             continue
-        sell_cost = est_price * qty_int * cost_rate
+        sell_cost = max(est_price * qty_int * cost_rate, min_cost)
         est_proceeds += est_price * qty_int - sell_cost
         sell_orders.append(
             {
@@ -603,15 +625,15 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         )
 
     held_count = len(kept_positions) + len(unsold_positions)
-    if max_positions > 0 and held_count > max_positions and optional_keeps:
-        excess = held_count - max_positions
+    if n_target > 0 and held_count > n_target and optional_keeps:
+        excess = held_count - n_target
         # Drop lower-ranked optional keeps first to preserve stronger prediction signals.
         optional_keeps.sort(key=lambda item: (item[3], item[2] * item[1]), reverse=True)
         for symbol, qty_int, est_price, _ in optional_keeps[:excess]:
             if symbol not in kept_positions:
                 continue
             del kept_positions[symbol]
-            sell_cost = est_price * qty_int * cost_rate
+            sell_cost = max(est_price * qty_int * cost_rate, min_cost)
             est_proceeds += est_price * qty_int - sell_cost
             sell_orders.append(
                 {
@@ -646,7 +668,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         if row is None:
             continue
         est_price = float(row.price) * (1.0 + buffer_bps / 10000.0)
-        est_cost = est_price * cost_rate
+        est_cost = max(est_price * cost_rate, min_cost)
         required = est_price + est_cost
         target_weight = float(row.price) / nav_est if nav_est > 0 else 0.0
         within_min_trade = False
@@ -659,7 +681,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         selected = False
 
         if not within_band and not within_min_trade:
-            if held_count + selected_count < max_positions and budget_ok:
+            if held_count + selected_count < n_target and budget_ok:
                 if symbol not in kept_positions and symbol not in unsold_positions:
                     selected = True
                     selected_count += 1

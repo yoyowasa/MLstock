@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -64,6 +64,7 @@ def _compute_daily_metrics(bars_df: pd.DataFrame, cfg: AppConfig) -> pd.DataFram
 def _build_weekly_table(
     bars_df: pd.DataFrame,
     week_map: pd.DataFrame,
+    spy_return_by_week: Optional[Dict[date, float]] = None,
 ) -> pd.DataFrame:
     price_col = "adj_open" if "adj_open" in bars_df.columns else "open"
     weekly = bars_df.merge(week_map, left_on="date", right_on="anchor_date", how="inner")
@@ -76,8 +77,35 @@ def _build_weekly_table(
     # Initial NaNs are intentional warm-up periods and are filtered downstream when needed.
     weekly["ret_1w"] = weekly["price"].pct_change()
     weekly["ret_4w"] = weekly["price"].pct_change(4)
+    weekly["ret_8w"] = weekly["price"].pct_change(8)
+    weekly["ret_13w"] = weekly["price"].pct_change(13)
+    weekly["ret_26w"] = weekly["price"].pct_change(26)
+
     weekly["vol_4w"] = weekly["ret_1w"].rolling(4, min_periods=4).std()
-    weekly["label_return"] = weekly["next_open"] / weekly["price"] - 1
+    weekly["vol_8w"] = weekly["ret_1w"].rolling(8, min_periods=8).std()
+    weekly["vol_13w"] = weekly["ret_1w"].rolling(13, min_periods=13).std()
+
+    weekly["ma_ratio_10w"] = weekly["price"] / weekly["price"].rolling(10, min_periods=10).mean() - 1.0
+    weekly["ma_ratio_20w"] = weekly["price"] / weekly["price"].rolling(20, min_periods=20).mean() - 1.0
+
+    # 週次 high/low の結合は未実装のため、簡易的に price の rolling max/min で代用する。
+    weekly["high_low_range_4w"] = (
+        weekly["price"].rolling(4).max() - weekly["price"].rolling(4).min()
+    ) / weekly["price"]
+
+    if "volume" in weekly.columns:
+        vol_1w = weekly["volume"]
+        vol_4w_avg = weekly["volume"].rolling(4, min_periods=4).mean()
+        weekly["volume_ratio_4w"] = vol_1w / vol_4w_avg
+    else:
+        weekly["volume_ratio_4w"] = None
+
+    weekly["label_return_raw"] = weekly["next_open"] / weekly["price"] - 1
+    if spy_return_by_week is not None:
+        weekly["spy_return"] = weekly["week_start"].map(spy_return_by_week)
+        weekly["label_return"] = weekly["label_return_raw"] - weekly["spy_return"].fillna(0.0)
+    else:
+        weekly["label_return"] = weekly["label_return_raw"]
     return weekly
 
 
@@ -103,18 +131,50 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
     week_map = _build_week_map(calendar_df)
     write_parquet_atomic(week_map, snapshots_week_map_path(cfg))
 
+    actions_path = raw_corp_actions_path(cfg)
+    actions_df = read_parquet(actions_path) if actions_path.exists() else pd.DataFrame()
+
+    benchmark_symbol = str(cfg.weekly.labels.benchmark_symbol).upper()
+    use_excess_label = bool(cfg.weekly.labels.use_excess)
+    spy_return_by_week: Dict[date, float] = {}
+    spy_features_by_week: Dict[date, Dict[str, float]] = {}
+    if use_excess_label and benchmark_symbol:
+        spy_bars_path = raw_bars_path(cfg, benchmark_symbol)
+        if spy_bars_path.exists():
+            spy_bars_df = read_parquet(spy_bars_path)
+            if not spy_bars_df.empty:
+                spy_bars_df["date"] = pd.to_datetime(spy_bars_df["date"]).dt.date
+                spy_bars_df = spy_bars_df.sort_values("date").reset_index(drop=True)
+                spy_actions = (
+                    actions_df[actions_df["symbol"] == benchmark_symbol] if not actions_df.empty else pd.DataFrame()
+                )
+                if not spy_actions.empty:
+                    spy_actions = spy_actions[spy_actions["action_type"] == "split"]
+                spy_bars_df = _apply_splits(spy_bars_df, spy_actions)
+                spy_bars_df = _compute_daily_metrics(spy_bars_df, cfg)
+                spy_weekly = _build_weekly_table(spy_bars_df, week_map)
+                if not spy_weekly.empty and "label_return_raw" in spy_weekly.columns:
+                    spy_labels = spy_weekly[["week_start", "label_return_raw"]].dropna(subset=["label_return_raw"])
+                    for row in spy_labels.itertuples(index=False):
+                        spy_return_by_week[row.week_start] = float(row.label_return_raw)
+                # Build SPY market context features for each week
+                if not spy_weekly.empty:
+                    for row in spy_weekly.itertuples(index=False):
+                        feats: Dict[str, float] = {}
+                        feats["spy_ret_1w"] = float(row.ret_1w) if pd.notna(row.ret_1w) else float("nan")
+                        feats["spy_ret_4w"] = float(row.ret_4w) if pd.notna(row.ret_4w) else float("nan")
+                        feats["spy_vol_4w"] = float(row.vol_4w) if pd.notna(row.vol_4w) else float("nan")
+                        spy_features_by_week[row.week_start] = feats
+
     symbols = symbols or _load_seed_symbols(cfg)
     if not symbols:
         raise ValueError("No seed symbols available for snapshots")
-
-    actions_path = raw_corp_actions_path(cfg)
-    actions_df = read_parquet(actions_path) if actions_path.exists() else pd.DataFrame()
 
     features_frames: List[pd.DataFrame] = []
     labels_frames: List[pd.DataFrame] = []
     universe_frames: List[pd.DataFrame] = []
     feature_output_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"] + list(FEATURE_COLUMNS)
-    label_output_cols = ["week_start", "symbol", "label_return"]
+    label_output_cols = ["week_start", "symbol", "label_return", "label_return_raw"]
     universe_output_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"]
 
     for symbol in symbols:
@@ -135,7 +195,11 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
         bars_df = _apply_splits(bars_df, symbol_actions)
         bars_df = _compute_daily_metrics(bars_df, cfg)
 
-        weekly = _build_weekly_table(bars_df, week_map)
+        weekly = _build_weekly_table(
+            bars_df,
+            week_map,
+            spy_return_by_week=spy_return_by_week if use_excess_label else None,
+        )
         if weekly.empty:
             continue
         weekly["symbol"] = symbol
@@ -145,7 +209,7 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
                 weekly[column] = None
         features_frames.append(weekly[feature_output_cols])
 
-        labels = weekly[["week_start", "symbol", "label_return"]].dropna(subset=["label_return"])
+        labels = weekly[["week_start", "symbol", "label_return", "label_return_raw"]].dropna(subset=["label_return"])
         labels_frames.append(labels)
 
         universe = weekly[["week_start", "symbol", "price", "avg_dollar_vol_20d"]]
@@ -162,6 +226,32 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
             labels_df = labels_df[~labels_df["symbol"].astype(str).str.upper().isin(exclude_symbols)]
         if not universe_df.empty:
             universe_df = universe_df[~universe_df["symbol"].astype(str).str.upper().isin(exclude_symbols)]
+
+    # ret_1w_rank は同一週の銘柄間で計算するクロスセクショナル特徴量。
+    if not features_df.empty and "ret_1w" in features_df.columns:
+        features_df["ret_1w_rank"] = features_df.groupby("week_start")["ret_1w"].rank(pct=True, method="average")
+
+    # マーケットコンテキスト特徴量: SPY系 + market_breadth
+    if not features_df.empty:
+        # SPY features: spy_ret_1w, spy_ret_4w, spy_vol_4w
+        if spy_features_by_week:
+            for col in ("spy_ret_1w", "spy_ret_4w", "spy_vol_4w"):
+                features_df[col] = features_df["week_start"].map(
+                    lambda ws, c=col: spy_features_by_week.get(ws, {}).get(c, float("nan"))
+                )
+        else:
+            for col in ("spy_ret_1w", "spy_ret_4w", "spy_vol_4w"):
+                features_df[col] = float("nan")
+        # market_breadth: 同一週で ret_1w > 0 の銘柄割合
+        breadth = features_df.groupby("week_start")["ret_1w"].apply(
+            lambda s: (s > 0).sum() / max(len(s), 1)
+        ).rename("market_breadth")
+        features_df = features_df.merge(
+            breadth.reset_index(), on="week_start", how="left", suffixes=("", "_calc")
+        )
+        if "market_breadth_calc" in features_df.columns:
+            features_df["market_breadth"] = features_df["market_breadth_calc"]
+            features_df = features_df.drop(columns=["market_breadth_calc"])
 
     if features_df.empty:
         features_df = pd.DataFrame(columns=feature_output_cols)

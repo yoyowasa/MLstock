@@ -55,6 +55,30 @@ def _get_optional_float(mapping: Dict[str, Any], key: str, path: str) -> float |
     return float(value)
 
 
+def _get_optional_str(mapping: Dict[str, Any], key: str, path: str) -> str | None:
+    if key not in mapping:
+        return None
+    value = mapping[key]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        full_key = f"{path}.{key}" if path else key
+        raise ValueError(f"Config key must be string or null: {full_key}")
+    return value
+
+
+def _get_optional_int(mapping: Dict[str, Any], key: str, path: str) -> int | None:
+    if key not in mapping:
+        return None
+    value = mapping[key]
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        full_key = f"{path}.{key}" if path else key
+        raise ValueError(f"Config key must be int or null: {full_key}")
+    return value
+
+
 def _get_str_list(mapping: Dict[str, Any], key: str, path: str) -> List[str]:
     value = _require(mapping, key, path)
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
@@ -118,6 +142,7 @@ class CorpActionsConfig:
 class SnapshotsConfig:
     weekly_dir: str
     min_avg_dollar_vol_20d: float
+    min_price: float
     min_trading_days: int
     feature_lookback_days: int
     exclude_symbols: List[str]
@@ -127,6 +152,23 @@ class SnapshotsConfig:
 class TrainingConfig:
     train_window_years: float
     min_train_weeks: int
+    model_type: str
+    ridge_alpha: float
+    ensemble_weight_ridge: float
+    lgbm_n_estimators: int | None
+    lgbm_max_depth: int | None
+    lgbm_learning_rate: float | None
+
+
+@dataclass(frozen=True)
+class WeeklyLabelsConfig:
+    benchmark_symbol: str
+    use_excess: bool
+
+
+@dataclass(frozen=True)
+class WeeklyConfig:
+    labels: WeeklyLabelsConfig
 
 
 @dataclass(frozen=True)
@@ -135,6 +177,9 @@ class SelectionConfig:
     cash_reserve_usd: float
     price_cap: float
     max_positions: int
+    min_positions: int
+    confidence_sizing: bool
+    confidence_threshold: float
     buy_fill_policy: str
     estimate_entry_buffer_bps: float
     min_proba_buy: float
@@ -157,6 +202,7 @@ class ExecutionConfig:
 @dataclass(frozen=True)
 class CostModelConfig:
     bps_per_side: float
+    min_cost_usd_per_side: float
 
 
 @dataclass(frozen=True)
@@ -223,6 +269,7 @@ class AppConfig:
     corp_actions: CorpActionsConfig
     snapshots: SnapshotsConfig
     training: TrainingConfig
+    weekly: WeeklyConfig
     selection: SelectionConfig
     execution: ExecutionConfig
     cost_model: CostModelConfig
@@ -241,6 +288,7 @@ class AppConfig:
         corp_actions = _require(data, "corp_actions", "")
         snapshots = _require(data, "snapshots", "")
         training = _require(data, "training", "")
+        weekly = data.get("weekly")
         selection = _require(data, "selection", "")
         execution = data.get("execution")
         cost_model = _require(data, "cost_model", "")
@@ -285,25 +333,73 @@ class AppConfig:
             batch_size=_get_int(corp_actions, "batch_size", "corp_actions"),
             max_workers=_get_int(corp_actions, "max_workers", "corp_actions"),
         )
+        min_price = _get_optional_float(snapshots, "min_price", "snapshots")
         snapshots_cfg = SnapshotsConfig(
             weekly_dir=_get_str(snapshots, "weekly_dir", "snapshots"),
             min_avg_dollar_vol_20d=_get_float(snapshots, "min_avg_dollar_vol_20d", "snapshots"),
+            min_price=1.0 if min_price is None else min_price,
             min_trading_days=_get_int(snapshots, "min_trading_days", "snapshots"),
             feature_lookback_days=_get_int(snapshots, "feature_lookback_days", "snapshots"),
             exclude_symbols=_get_str_list(snapshots, "exclude_symbols", "snapshots"),
         )
+        model_type = _get_optional_str(training, "model_type", "training")
+        ridge_alpha = _get_optional_float(training, "ridge_alpha", "training")
+        ensemble_weight_ridge = _get_optional_float(training, "ensemble_weight_ridge", "training")
+        lgbm_n_estimators = _get_optional_int(training, "lgbm_n_estimators", "training")
+        lgbm_max_depth = _get_optional_int(training, "lgbm_max_depth", "training")
+        lgbm_learning_rate = _get_optional_float(training, "lgbm_learning_rate", "training")
         training_cfg = TrainingConfig(
             train_window_years=_get_float(training, "train_window_years", "training"),
             min_train_weeks=_get_int(training, "min_train_weeks", "training"),
+            model_type="ridge" if model_type is None else model_type,
+            ridge_alpha=1.0 if ridge_alpha is None else ridge_alpha,
+            ensemble_weight_ridge=0.5 if ensemble_weight_ridge is None else ensemble_weight_ridge,
+            lgbm_n_estimators=lgbm_n_estimators,
+            lgbm_max_depth=lgbm_max_depth,
+            lgbm_learning_rate=lgbm_learning_rate,
         )
+        if weekly is None:
+            weekly_labels_cfg = WeeklyLabelsConfig(
+                benchmark_symbol="SPY",
+                use_excess=True,
+            )
+        else:
+            if not isinstance(weekly, dict):
+                raise ValueError("Config key must be object: weekly")
+            weekly_labels = weekly.get("labels")
+            if weekly_labels is None:
+                weekly_labels_cfg = WeeklyLabelsConfig(
+                    benchmark_symbol="SPY",
+                    use_excess=True,
+                )
+            else:
+                if not isinstance(weekly_labels, dict):
+                    raise ValueError("Config key must be object: weekly.labels")
+                benchmark_symbol = _get_optional_str(weekly_labels, "benchmark_symbol", "weekly.labels")
+                if "use_excess" in weekly_labels:
+                    use_excess = _get_bool(weekly_labels, "use_excess", "weekly.labels")
+                else:
+                    use_excess = True
+                weekly_labels_cfg = WeeklyLabelsConfig(
+                    benchmark_symbol="SPY" if benchmark_symbol is None else benchmark_symbol,
+                    use_excess=use_excess,
+                )
+        weekly_cfg = WeeklyConfig(labels=weekly_labels_cfg)
         deadband_abs = _get_optional_float(selection, "deadband_abs", "selection")
         deadband_rel = _get_optional_float(selection, "deadband_rel", "selection")
         min_trade_notional = _get_optional_float(selection, "min_trade_notional", "selection")
+        min_positions = _get_optional_int(selection, "min_positions", "selection")
+        confidence_sizing_raw = selection.get("confidence_sizing")
+        confidence_sizing = bool(confidence_sizing_raw) if confidence_sizing_raw is not None else False
+        confidence_threshold = _get_optional_float(selection, "confidence_threshold", "selection")
         selection_cfg = SelectionConfig(
             cash_start_usd=_get_float(selection, "cash_start_usd", "selection"),
             cash_reserve_usd=_get_float(selection, "cash_reserve_usd", "selection"),
             price_cap=_get_float(selection, "price_cap", "selection"),
             max_positions=_get_int(selection, "max_positions", "selection"),
+            min_positions=5 if min_positions is None else min_positions,
+            confidence_sizing=confidence_sizing,
+            confidence_threshold=0.0 if confidence_threshold is None else confidence_threshold,
             buy_fill_policy=_get_str(selection, "buy_fill_policy", "selection"),
             estimate_entry_buffer_bps=_get_float(selection, "estimate_entry_buffer_bps", "selection"),
             min_proba_buy=_get_float(selection, "min_proba_buy", "selection"),
@@ -320,8 +416,10 @@ class AppConfig:
                 enabled=_get_bool(deadband_v2, "enabled", "execution.deadband_v2"),
             )
         execution_cfg = ExecutionConfig(deadband_v2=deadband_v2_cfg)
+        min_cost_usd_per_side = _get_optional_float(cost_model, "min_cost_usd_per_side", "cost_model")
         cost_model_cfg = CostModelConfig(
             bps_per_side=_get_float(cost_model, "bps_per_side", "cost_model"),
+            min_cost_usd_per_side=0.0 if min_cost_usd_per_side is None else min_cost_usd_per_side,
         )
         regime_gate = _require(risk, "regime_gate", "risk")
         vol_cap = _require(risk, "vol_cap", "risk")
@@ -378,6 +476,7 @@ class AppConfig:
             corp_actions=corp_actions_cfg,
             snapshots=snapshots_cfg,
             training=training_cfg,
+            weekly=weekly_cfg,
             selection=selection_cfg,
             execution=execution_cfg,
             cost_model=cost_model_cfg,

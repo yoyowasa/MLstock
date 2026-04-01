@@ -75,7 +75,13 @@ class AlpacaClient:
         delta = (dt - datetime.now(timezone.utc)).total_seconds()
         return max(0.0, delta)
 
-    def _request(self, method: str, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Any:
         url = f"{self.base_url}{path}"
         last_error: Optional[Exception] = None
         retry_after_seconds: Optional[float] = None
@@ -85,6 +91,7 @@ class AlpacaClient:
                     method,
                     url,
                     params=params,
+                    json=json_body,
                     timeout=self.timeout,
                 )
             except requests.RequestException as exc:
@@ -100,7 +107,14 @@ class AlpacaClient:
                 elif not response.ok:
                     raise RuntimeError(f"Alpaca error {response.status_code}: {response.text}")
                 else:
-                    return response.json()
+                    if response.status_code == 204:
+                        return None
+                    if not response.text:
+                        return None
+                    try:
+                        return response.json()
+                    except ValueError:
+                        return response.text
 
             if attempt < self.max_retries:
                 sleep_for = self.backoff_seconds * (2**attempt)
@@ -178,3 +192,38 @@ class AlpacaClient:
         if page_token:
             params["page_token"] = page_token
         return self._request("GET", endpoints.CORPORATE_ACTIONS, params=params)
+
+    def get_clock(self) -> Any:
+        return self._request("GET", endpoints.CLOCK)
+
+    def get_account(self) -> Any:
+        return self._request("GET", endpoints.ACCOUNT)
+
+    def list_positions(self) -> Any:
+        return self._request("GET", endpoints.POSITIONS)
+
+    def close_position(self, symbol: str) -> Any:
+        return self._request("DELETE", f"{endpoints.POSITIONS}/{symbol}")
+
+    def close_all_positions(self) -> Any:
+        return self._request("DELETE", endpoints.POSITIONS)
+
+    def submit_order(
+        self,
+        symbol: str,
+        qty: int,
+        side: str,
+        order_type: str = "market",
+        time_in_force: str = "day",
+        client_order_id: Optional[str] = None,
+    ) -> Any:
+        payload: Dict[str, Any] = {
+            "symbol": symbol,
+            "qty": str(int(qty)),
+            "side": side,
+            "type": order_type,
+            "time_in_force": time_in_force,
+        }
+        if client_order_id:
+            payload["client_order_id"] = client_order_id
+        return self._request("POST", endpoints.ORDERS, json_body=payload)
