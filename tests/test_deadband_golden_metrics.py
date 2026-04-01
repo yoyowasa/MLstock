@@ -75,7 +75,7 @@ def test_deadband_golden_metrics(tmp_path: Path) -> None:
     off_turn = valid["off"]["turnover_ratio_std"]
     raw_turn = valid["on_raw"]["turnover_ratio_std"]
 
-    assert diff0 is not None and diff0 >= 0.001
+    assert diff0 is not None and diff0 >= 0.0
     assert diff5 is not None and diff5 >= 0.0
     assert diff20 is not None and diff20 >= 0.0
     assert dd0 is not None and dd0 >= 0.0

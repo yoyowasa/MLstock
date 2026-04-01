@@ -174,7 +174,7 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
     labels_frames: List[pd.DataFrame] = []
     universe_frames: List[pd.DataFrame] = []
     feature_output_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"] + list(FEATURE_COLUMNS)
-    label_output_cols = ["week_start", "symbol", "label_return", "label_return_raw"]
+    label_output_cols = ["week_start", "symbol", "label_return"]
     universe_output_cols = ["week_start", "symbol", "price", "avg_dollar_vol_20d"]
 
     for symbol in symbols:
@@ -209,7 +209,7 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
                 weekly[column] = None
         features_frames.append(weekly[feature_output_cols])
 
-        labels = weekly[["week_start", "symbol", "label_return", "label_return_raw"]].dropna(subset=["label_return"])
+        labels = weekly[["week_start", "symbol", "label_return"]].dropna(subset=["label_return"])
         labels_frames.append(labels)
 
         universe = weekly[["week_start", "symbol", "price", "avg_dollar_vol_20d"]]

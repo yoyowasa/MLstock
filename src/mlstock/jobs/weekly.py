@@ -30,6 +30,14 @@ def _to_date(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series).dt.date
 
 
+def _ensure_feature_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    prepared = frame.copy()
+    for column in FEATURE_COLUMNS:
+        if column not in prepared.columns:
+            prepared[column] = 0.0
+    return prepared
+
+
 def _normalize_portfolio_state(state: Dict[str, object], cfg: AppConfig) -> Dict[str, object]:
     cash = state.get("cash_usd")
     if cash is None:
@@ -133,6 +141,7 @@ def run(cfg: AppConfig) -> Dict[str, object]:
         raise ValueError("Snapshots features are empty")
 
     features_df["week_start"] = _to_date(features_df["week_start"])
+    features_df = _ensure_feature_columns(features_df)
     if not labels_df.empty:
         labels_df["week_start"] = _to_date(labels_df["week_start"])
 

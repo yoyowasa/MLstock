@@ -25,6 +25,14 @@ def _to_date(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series).dt.date
 
 
+def _ensure_feature_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    prepared = frame.copy()
+    for column in FEATURE_COLUMNS:
+        if column not in prepared.columns:
+            prepared[column] = 0.0
+    return prepared
+
+
 def _format_week(value: object) -> str:
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
@@ -328,6 +336,7 @@ def run(cfg: AppConfig, start: Optional[date] = None, end: Optional[date] = None
         raise ValueError("Snapshots features/labels are empty")
 
     features_df["week_start"] = _to_date(features_df["week_start"])
+    features_df = _ensure_feature_columns(features_df)
     labels_df["week_start"] = _to_date(labels_df["week_start"])
 
     exclude_symbols = {symbol.upper() for symbol in cfg.snapshots.exclude_symbols}

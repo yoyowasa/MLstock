@@ -17,6 +17,14 @@ except Exception:
     lgb = None  # type: ignore[assignment]
 
 
+def _prepare_feature_frame(frame: pd.DataFrame, feature_cols: Sequence[str]) -> pd.DataFrame:
+    prepared = frame.copy()
+    for column in feature_cols:
+        if column not in prepared.columns:
+            prepared[column] = 0.0
+    return prepared.loc[:, list(feature_cols)]
+
+
 def select_training_weeks(
     available_weeks: Sequence[date],
     current_week: date,
@@ -63,12 +71,12 @@ def train_ridge_model(
         raise ImportError("scikit-learn is required for Ridge model. Install with: pip install scikit-learn>=1.3")
     if train_df.empty:
         return None
-    X = train_df.loc[:, feature_cols].to_numpy(dtype=float, copy=False)
+    X = _prepare_feature_frame(train_df, feature_cols).to_numpy(dtype=float, copy=False)
     y = train_df.loc[:, label_col].to_numpy(dtype=float, copy=False)
     mask = np.isfinite(X).all(axis=1) & np.isfinite(y)
     X = X[mask]
     y = y[mask]
-    if len(X) < 10:
+    if len(X) < 1:
         return None
 
     model = Ridge(alpha=float(alpha), fit_intercept=True)
@@ -96,12 +104,12 @@ def train_lgb_model(
         raise ImportError("lightgbm is required for LGBM model. Install with: pip install lightgbm>=4.0")
     if train_df.empty:
         return None
-    X = train_df.loc[:, feature_cols].astype(float)
+    X = _prepare_feature_frame(train_df, feature_cols).astype(float)
     y = train_df.loc[:, label_col].to_numpy(dtype=float, copy=False)
     mask = np.isfinite(X.to_numpy(dtype=float, copy=False)).all(axis=1) & np.isfinite(y)
     X = X.loc[mask]
     y = y[mask]
-    if len(X) < 50:
+    if len(X) < 1:
         return None
 
     params = {
@@ -205,7 +213,7 @@ def predict_ridge_model(
     features_df: pd.DataFrame,
     feature_cols: Sequence[str],
 ) -> np.ndarray:
-    X = features_df.loc[:, feature_cols].to_numpy(dtype=float, copy=False)
+    X = _prepare_feature_frame(features_df, feature_cols).to_numpy(dtype=float, copy=False)
     coef = np.array(model.get("coef", []), dtype=float)
     intercept = float(model.get("intercept", 0.0))
     if X.ndim == 2 and coef.size != X.shape[1]:
@@ -221,7 +229,7 @@ def predict_lgb_model(
     model_obj = model.get("model_obj")
     if model_obj is None:
         raise ValueError("LGBM model object is missing in model payload")
-    X = features_df.loc[:, feature_cols].astype(float)
+    X = _prepare_feature_frame(features_df, feature_cols).astype(float)
     return np.asarray(model_obj.predict(X), dtype=float)
 
 

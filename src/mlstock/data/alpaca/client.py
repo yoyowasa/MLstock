@@ -109,11 +109,11 @@ class AlpacaClient:
                 else:
                     if response.status_code == 204:
                         return None
-                    if not response.text:
-                        return None
                     try:
                         return response.json()
                     except ValueError:
+                        if not response.text:
+                            return None
                         return response.text
 
             if attempt < self.max_retries:
