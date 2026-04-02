@@ -502,9 +502,16 @@ def scan_gap_candidates(
     market_cap_filter_enabled = settings.market_cap_source == "yfinance" and universe.min_market_cap_m > 0
     candidates: List[GapCandidate] = []
     for row in raw_candidates:
-        symbol, gap_pct, prev_close, open_price, avg_volume, first_window_volume, daily_volume_pace, volume_pace_ratio = (
-            row
-        )
+        (
+            symbol,
+            gap_pct,
+            prev_close,
+            open_price,
+            avg_volume,
+            first_window_volume,
+            daily_volume_pace,
+            volume_pace_ratio,
+        ) = row
         market_cap_m = market_caps_m.get(symbol, -1.0)
         if market_cap_filter_enabled:
             if market_cap_m < 0:

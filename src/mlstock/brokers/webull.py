@@ -248,7 +248,9 @@ class WebullOrderBroker(OrderBroker):
         }
         response = self._api.order_v2.place_order(account_id=account_id, new_orders=new_orders)
         payload = self._response_json(response)
-        order_payload = payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), dict) else payload
+        order_payload = (
+            payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), dict) else payload
+        )
         return BrokerOrderResult(
             order_id=str(order_payload.get("client_order_id") or client_order_id),
             symbol=instrument["symbol"],

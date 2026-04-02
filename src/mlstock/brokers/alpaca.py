@@ -43,11 +43,15 @@ class AlpacaOrderBroker(OrderBroker):
         return items
 
     def submit_market_buy(self, symbol: str, qty: int) -> BrokerOrderResult:
-        payload = self.trading_client.submit_order(symbol=symbol, qty=qty, side="buy", order_type="market", time_in_force="day")
+        payload = self.trading_client.submit_order(
+            symbol=symbol, qty=qty, side="buy", order_type="market", time_in_force="day"
+        )
         return self._normalize_order(payload, symbol=symbol, qty=qty, side="buy")
 
     def submit_market_sell(self, symbol: str, qty: int) -> BrokerOrderResult:
-        payload = self.trading_client.submit_order(symbol=symbol, qty=qty, side="sell", order_type="market", time_in_force="day")
+        payload = self.trading_client.submit_order(
+            symbol=symbol, qty=qty, side="sell", order_type="market", time_in_force="day"
+        )
         return self._normalize_order(payload, symbol=symbol, qty=qty, side="sell")
 
     def close_position(self, symbol: str) -> BrokerOrderResult:

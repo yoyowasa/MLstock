@@ -1,13 +1,12 @@
 """V2改善の深堀り分析スクリプト。
 サブ期間安定性, 特徴量重要度, ルックアヘッドバイアス, 市場レジーム分解を行う。
 """
+
 from __future__ import annotations
 
 import copy
-import json
 import warnings
 from pathlib import Path
-from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -16,6 +15,7 @@ warnings.filterwarnings("ignore")
 
 BASE_DIR = Path("C:/BOT/MLStock")
 BACKTEST_DIR = BASE_DIR / "artifacts" / "backtest"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ① ルックアヘッドバイアス 厳密検証
@@ -26,12 +26,12 @@ def verify_timing():
     print("=" * 70)
 
     features = pd.read_parquet(BASE_DIR / "data/snapshots/weekly/features.parquet")
-    labels   = pd.read_parquet(BASE_DIR / "data/snapshots/weekly/labels.parquet")
+    labels = pd.read_parquet(BASE_DIR / "data/snapshots/weekly/labels.parquet")
 
     features["week_start"] = pd.to_datetime(features["week_start"]).dt.date
-    labels["week_start"]   = pd.to_datetime(labels["week_start"]).dt.date
+    labels["week_start"] = pd.to_datetime(labels["week_start"]).dt.date
 
-    merged = features.merge(labels, on=["week_start","symbol"], how="inner")
+    merged = features.merge(labels, on=["week_start", "symbol"], how="inner")
 
     # 特徴量は week_start の月曜 open 時点で入手可能
     # ラベル = 翌週 open / 今週 open - 1 → 翌週月曜まで不明
@@ -43,7 +43,7 @@ def verify_timing():
     print("-" * 52)
     for col in spy_cols + ["ret_1w", "ret_4w", "vol_4w"]:
         if col in merged.columns:
-            c_ex  = merged[col].corr(merged["label_return"])
+            c_ex = merged[col].corr(merged["label_return"])
             c_raw = merged[col].corr(merged["label_return_raw"])
             print(f"{col:<20} {c_ex:>12.4f} {c_raw:>16.4f}")
 
@@ -54,10 +54,10 @@ def verify_timing():
     spy_by_week = merged.groupby("week_start")["spy_ret_1w"].first().rename("spy_ret_1w")
     label_by_week = merged.groupby("week_start")["label_return_raw"].mean().rename("label_raw_mean")
     df_w = pd.DataFrame({"spy_ret_1w": spy_by_week, "label_raw_mean": label_by_week}).dropna()
-    c_same  = df_w["spy_ret_1w"].corr(df_w["label_raw_mean"])
-    c_lag1  = df_w["spy_ret_1w"].corr(df_w["label_raw_mean"].shift(-1))  # 1週先ラベル
-    c_lead1 = df_w["spy_ret_1w"].corr(df_w["label_raw_mean"].shift(1))   # 1週前ラベル(逆チェック)
-    print(f"\n[B] spy_ret_1w の週次相関構造:")
+    c_same = df_w["spy_ret_1w"].corr(df_w["label_raw_mean"])
+    c_lag1 = df_w["spy_ret_1w"].corr(df_w["label_raw_mean"].shift(-1))  # 1週先ラベル
+    c_lead1 = df_w["spy_ret_1w"].corr(df_w["label_raw_mean"].shift(1))  # 1週前ラベル(逆チェック)
+    print("\n[B] spy_ret_1w の週次相関構造:")
     print(f"  同一週ラベル(正常):   {c_same:.4f}  ← これが大きいとOK(モメンタム)")
     print(f"  1wk-ahead label:      {c_lag1:.4f}  <- if ~= same-week corr -> LEAK suspect")
     print(f"  1wk-before label:     {c_lead1:.4f}  <- if large -> LEAK confirmed")
@@ -87,10 +87,9 @@ def subperiod_stability():
     print("② サブ期間安定性チェック (年別)")
     print("=" * 70)
 
-    import shutil, yaml
+    import yaml
     from mlstock.config.loader import load_config
     from mlstock.jobs import backtest
-    from mlstock.config.schema import AppConfig
 
     config_path = BASE_DIR / "config" / "config.yaml"
     with open(config_path) as f:
@@ -107,11 +106,14 @@ def subperiod_stability():
     ]
 
     def run_for_config(yaml_cfg, start, end, label_str):
-        import io, contextlib, tempfile
+        import io
+        import contextlib
+
         with open(config_path, "w") as f:
             yaml.dump(yaml_cfg, f, default_flow_style=False)
         cfg = load_config()
         from datetime import date
+
         s = date.fromisoformat(start)
         e = date.fromisoformat(end)
         with contextlib.redirect_stdout(io.StringIO()):
@@ -157,10 +159,10 @@ def subperiod_stability():
             ret, dd, _ = run_for_config(cfg, start, end, cname)
             all_results[cname][year_label] = {"ret": ret, "dd": dd}
             row += f"  {ret*100:>12.2f}%"
-        delta_feat = (all_results["feat17_fixedN"][year_label]["ret"] -
-                      all_results["E_70_old"][year_label]["ret"]) * 100
-        delta_v2   = (all_results["V2_varN"][year_label]["ret"] -
-                      all_results["E_70_old"][year_label]["ret"]) * 100
+        delta_feat = (
+            all_results["feat17_fixedN"][year_label]["ret"] - all_results["E_70_old"][year_label]["ret"]
+        ) * 100
+        delta_v2 = (all_results["V2_varN"][year_label]["ret"] - all_results["E_70_old"][year_label]["ret"]) * 100
         row += f"  {delta_feat:>+10.2f}pt  {delta_v2:>+8.2f}pt"
         print(row)
 
@@ -170,12 +172,15 @@ def subperiod_stability():
     print("\n[サブ期間安定性サマリー]")
     for cname in [c for c, _ in configs]:
         rets = [v["ret"] for v in all_results[cname].values()]
-        wins_vs_e70 = sum(
-            1 for yr in all_results[cname]
-            if all_results[cname][yr]["ret"] > all_results["E_70_old"][yr]["ret"]
-        ) if cname != "E_70_old" else None
-        print(f"  {cname:<20}: mean={np.mean(rets)*100:+.2f}%  std={np.std(rets)*100:.2f}%"
-              + (f"  wins vs E70: {wins_vs_e70}/7" if wins_vs_e70 is not None else ""))
+        wins_vs_e70 = (
+            sum(1 for yr in all_results[cname] if all_results[cname][yr]["ret"] > all_results["E_70_old"][yr]["ret"])
+            if cname != "E_70_old"
+            else None
+        )
+        print(
+            f"  {cname:<20}: mean={np.mean(rets)*100:+.2f}%  std={np.std(rets)*100:.2f}%"
+            + (f"  wins vs E70: {wins_vs_e70}/7" if wins_vs_e70 is not None else "")
+        )
 
     return all_results
 
@@ -194,11 +199,11 @@ def feature_importance_check():
 
     cfg = load_config()
     features = pd.read_parquet(BASE_DIR / "data/snapshots/weekly/features.parquet")
-    labels   = pd.read_parquet(BASE_DIR / "data/snapshots/weekly/labels.parquet")
+    labels = pd.read_parquet(BASE_DIR / "data/snapshots/weekly/labels.parquet")
     features["week_start"] = pd.to_datetime(features["week_start"]).dt.date
-    labels["week_start"]   = pd.to_datetime(labels["week_start"]).dt.date
+    labels["week_start"] = pd.to_datetime(labels["week_start"]).dt.date
 
-    merged = features.merge(labels, on=["week_start","symbol"], how="inner")
+    merged = features.merge(labels, on=["week_start", "symbol"], how="inner")
     merged = merged.dropna(subset=list(FEATURE_COLUMNS) + ["label_return"])
 
     # 最新4年分のデータでモデルを1回訓練
@@ -212,11 +217,7 @@ def feature_importance_check():
         return
 
     coef = model["coef"]
-    feat_importance = sorted(
-        zip(FEATURE_COLUMNS, coef),
-        key=lambda x: abs(x[1]),
-        reverse=True
-    )
+    feat_importance = sorted(zip(FEATURE_COLUMNS, coef), key=lambda x: abs(x[1]), reverse=True)
 
     print(f"\n{'Feature':<25} {'Coefficient':>14} {'AbsRank':>8}")
     print("-" * 50)
@@ -241,12 +242,12 @@ def feature_importance_check():
     pred_spy = X_std[:, spy_idx].dot(c_arr[spy_idx])
     pred_old = X_std[:, old_idx].dot(c_arr[old_idx])
     var_total = np.var(preds)
-    var_spy   = np.var(pred_spy)
-    var_old   = np.var(pred_old)
-    print(f"\n[予測分散への寄与 (標準化係数ベース)]")
+    var_spy = np.var(pred_spy)
+    var_old = np.var(pred_old)
+    print("\n[予測分散への寄与 (標準化係数ベース)]")
     print(f"  旧13特徴量:         {var_old/var_total*100:6.1f}%")
     print(f"  新4 SPY特徴量:      {var_spy/var_total*100:6.1f}%")
-    print(f"  (注: 共線性あるため合計≠100%)")
+    print("  (注: 共線性あるため合計≠100%)")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -259,9 +260,9 @@ def regime_decomposition():
 
     # E_70 old vs feat17 vs V2 の NAV から週次リターンを計算
     configs_navs = [
-        ("E_70_old",    BACKTEST_DIR / "nav_ensemble_70_old.parquet"),
+        ("E_70_old", BACKTEST_DIR / "nav_ensemble_70_old.parquet"),
         ("feat17_fixedN", BACKTEST_DIR / "sweep_v2" / "nav_baseline_feat17.parquet"),
-        ("V2_varN",     BACKTEST_DIR / "sweep_v2" / "nav_varN_t0005_p60.parquet"),
+        ("V2_varN", BACKTEST_DIR / "sweep_v2" / "nav_varN_t0005_p60.parquet"),
     ]
 
     # SPYデータ取得
@@ -297,32 +298,32 @@ def regime_decomposition():
         lo_vol = merged[merged["spy_vol_4w"] <= vol_median]
 
         results_by_regime[name] = {
-            "all_mean":     merged["weekly_ret"].mean(),
-            "up_mean":      up_weeks["weekly_ret"].mean(),
-            "dn_mean":      dn_weeks["weekly_ret"].mean(),
-            "hi_vol_mean":  hi_vol["weekly_ret"].mean(),
-            "lo_vol_mean":  lo_vol["weekly_ret"].mean(),
-            "n_up":         len(up_weeks),
-            "n_dn":         len(dn_weeks),
+            "all_mean": merged["weekly_ret"].mean(),
+            "up_mean": up_weeks["weekly_ret"].mean(),
+            "dn_mean": dn_weeks["weekly_ret"].mean(),
+            "hi_vol_mean": hi_vol["weekly_ret"].mean(),
+            "lo_vol_mean": lo_vol["weekly_ret"].mean(),
+            "n_up": len(up_weeks),
+            "n_dn": len(dn_weeks),
         }
 
     print(f"\n{'Model':<22} {'All':>8} {'SPY-Up':>8} {'SPY-Dn':>8} {'Hi-Vol':>8} {'Lo-Vol':>8}  {'n_up/dn'}")
     print("-" * 75)
     for name, r in results_by_regime.items():
-        print(f"{name:<22} "
-              f"{r['all_mean']*100:>7.3f}% "
-              f"{r['up_mean']*100:>7.3f}% "
-              f"{r['dn_mean']*100:>7.3f}% "
-              f"{r['hi_vol_mean']*100:>7.3f}% "
-              f"{r['lo_vol_mean']*100:>7.3f}%  "
-              f"{r['n_up']}/{r['n_dn']}")
+        print(
+            f"{name:<22} "
+            f"{r['all_mean']*100:>7.3f}% "
+            f"{r['up_mean']*100:>7.3f}% "
+            f"{r['dn_mean']*100:>7.3f}% "
+            f"{r['hi_vol_mean']*100:>7.3f}% "
+            f"{r['lo_vol_mean']*100:>7.3f}%  "
+            f"{r['n_up']}/{r['n_dn']}"
+        )
 
     print("\n[解釈]")
     if "feat17_fixedN" in results_by_regime and "E_70_old" in results_by_regime:
-        delta_up = (results_by_regime["feat17_fixedN"]["up_mean"] -
-                    results_by_regime["E_70_old"]["up_mean"]) * 100
-        delta_dn = (results_by_regime["feat17_fixedN"]["dn_mean"] -
-                    results_by_regime["E_70_old"]["dn_mean"]) * 100
+        delta_up = (results_by_regime["feat17_fixedN"]["up_mean"] - results_by_regime["E_70_old"]["up_mean"]) * 100
+        delta_dn = (results_by_regime["feat17_fixedN"]["dn_mean"] - results_by_regime["E_70_old"]["dn_mean"]) * 100
         if abs(delta_up) > abs(delta_dn) * 1.5:
             print("  → 改善は主に上昇週に集中 (体制依存の可能性あり)")
         elif abs(delta_dn) > abs(delta_up) * 1.5:
@@ -341,7 +342,9 @@ def regime_gate_interaction():
     print("=" * 70)
     print("  (spy系特徴量はgate OFFでも機能するか？)")
 
-    import io, contextlib, yaml
+    import io
+    import contextlib
+    import yaml
     from mlstock.config.loader import load_config
     from mlstock.jobs import backtest
     from datetime import date
@@ -364,10 +367,10 @@ def regime_gate_interaction():
         return summary.get("return_pct", 0.0), dd
 
     configs = {
-        "feat17 + gate=ON":  (False, True),
+        "feat17 + gate=ON": (False, True),
         "feat17 + gate=OFF": (False, False),
-        "V2    + gate=ON":   (True,  True),
-        "V2    + gate=OFF":  (True,  False),
+        "V2    + gate=ON": (True, True),
+        "V2    + gate=OFF": (True, False),
     }
 
     print(f"\n{'Config':<25} {'Return%':>9} {'MaxDD%':>9} {'Return/DD':>10}")
@@ -379,7 +382,7 @@ def regime_gate_interaction():
         cfg["snapshots"]["min_price"] = 5.0
         cfg["risk"]["regime_gate"]["enabled"] = gate_on
         ret, dd = run_cfg(cfg)
-        ratio = ret*100 / abs(dd*100) if dd != 0 else 0
+        ratio = ret * 100 / abs(dd * 100) if dd != 0 else 0
         print(f"{label:<25} {ret*100:>9.2f} {dd*100:>9.2f} {ratio:>10.2f}")
 
     # Restore
@@ -391,14 +394,14 @@ def regime_gate_interaction():
 # Main
 # ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("  MLStock V2 深堀り分析レポート")
-    print("="*70)
+    print("=" * 70)
 
     verify_timing()
     feature_importance_check()
     regime_decomposition()
     regime_gate_interaction()
-    subperiod_stability()   # 最後 (一番時間かかる)
+    subperiod_stability()  # 最後 (一番時間かかる)
 
     print("\n\n=== 分析完了 ===")

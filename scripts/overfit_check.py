@@ -1,4 +1,5 @@
 """Overfitting check: compare ensemble weights across sub-periods."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -36,6 +37,7 @@ periods = [
     ("Bull 2023Q1-Q2", "2023-01-01", "2023-06-30"),
 ]
 
+
 def period_return(nav_df: pd.DataFrame, start, end):
     df = nav_df.copy()
     if start:
@@ -45,6 +47,7 @@ def period_return(nav_df: pd.DataFrame, start, end):
     if len(df) < 2:
         return None
     return (df.iloc[-1]["nav"] / df.iloc[0]["nav"] - 1) * 100
+
 
 def period_max_dd(nav_df: pd.DataFrame, start, end):
     df = nav_df.copy()
@@ -58,6 +61,7 @@ def period_max_dd(nav_df: pd.DataFrame, start, end):
     peaks = np.maximum.accumulate(navs)
     dd = (navs - peaks) / peaks
     return dd.min() * 100
+
 
 def period_sharpe(nav_df: pd.DataFrame, start, end):
     df = nav_df.copy()
@@ -73,6 +77,7 @@ def period_sharpe(nav_df: pd.DataFrame, start, end):
     if len(wr) < 2 or np.std(wr) == 0:
         return None
     return (np.mean(wr) / np.std(wr)) * np.sqrt(52)
+
 
 # ── SECTION 1: RETURN BY PERIOD ──────────────────────────────
 print("=" * 120)
@@ -98,7 +103,9 @@ print("SECTION 2: BEST ENSEMBLE WEIGHT PER PERIOD")
 print("=" * 120)
 
 ew_labels = [f"E_{w}" for w in weights if f"E_{w}" in all_navs]
-print(f"{'Period':<25} {'Best':>8} {'Ret%':>8} {'2nd':>8} {'Ret%':>8} {'Worst':>8} {'Ret%':>8}  {'Ridge':>8} {'LGBM':>8}")
+print(
+    f"{'Period':<25} {'Best':>8} {'Ret%':>8} {'2nd':>8} {'Ret%':>8} {'Worst':>8} {'Ret%':>8}  {'Ridge':>8} {'LGBM':>8}"
+)
 print("-" * 110)
 
 for pname, start, end in periods:
@@ -117,8 +124,10 @@ for pname, start, end in periods:
         worst = sorted_rets[-1]
         rr = f"{ridge_ret:>+8.2f}" if ridge_ret is not None else f"{'N/A':>8}"
         lr = f"{lgbm_ret:>+8.2f}" if lgbm_ret is not None else f"{'N/A':>8}"
-        print(f"{pname:<25} {best[0]:>8} {best[1]:>+8.2f} {second[0]:>8} {second[1]:>+8.2f} "
-              f"{worst[0]:>8} {worst[1]:>+8.2f}  {rr} {lr}")
+        print(
+            f"{pname:<25} {best[0]:>8} {best[1]:>+8.2f} {second[0]:>8} {second[1]:>+8.2f} "
+            f"{worst[0]:>8} {worst[1]:>+8.2f}  {rr} {lr}"
+        )
 
 # ── SECTION 3: SHARPE BY PERIOD ──────────────────────────────
 print()
@@ -227,7 +236,7 @@ for pname, start, end in periods:
         # Count direction changes
         changes = 0
         for i in range(1, len(vals)):
-            if i > 0 and (vals[i] - vals[i-1]) * (vals[i-1] - vals[max(0,i-2)]) < 0:
+            if i > 0 and (vals[i] - vals[i - 1]) * (vals[i - 1] - vals[max(0, i - 2)]) < 0:
                 changes += 1
 
         line = f"  {pname:<25}: "

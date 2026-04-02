@@ -1,4 +1,5 @@
 """Sweep confidence_threshold and price_cap to find optimal V2 settings."""
+
 from __future__ import annotations
 
 import copy
@@ -75,6 +76,7 @@ def main():
                     shutil.copy2(src, dst)
 
             import pandas as pd
+
             nav_df = pd.read_parquet(BACKTEST_DIR / "nav.parquet")
             nav_series = pd.to_numeric(nav_df["nav"], errors="coerce")
             dd = nav_series / nav_series.cummax() - 1
@@ -96,8 +98,10 @@ def main():
                 "pos_dist": {str(k): v for k, v in pos_dist.items()},
             }
             r = results[label]
-            print(f"  Return: {r['return_pct']*100:.2f}%  DD: {r['max_drawdown_pct']*100:.2f}%  "
-                  f"AvgPos: {r['avg_n_positions']:.1f}  Cash: {r['avg_cash_ratio']:.4f}")
+            print(
+                f"  Return: {r['return_pct']*100:.2f}%  DD: {r['max_drawdown_pct']*100:.2f}%  "
+                f"AvgPos: {r['avg_n_positions']:.1f}  Cash: {r['avg_cash_ratio']:.4f}"
+            )
         except Exception as e:
             print(f"  ERROR: {e}")
             results[label] = {"error": str(e)}
@@ -117,8 +121,10 @@ def main():
         if "error" in r:
             print(f"{label:<25} ERROR: {r['error'][:40]}")
             continue
-        print(f"{label:<25} {r['return_pct']*100:>8.2f} {r['max_drawdown_pct']*100:>8.2f} "
-              f"{r['avg_n_positions']:>8.1f} {r['avg_cash_ratio']*100:>8.2f} {r['trades']:>8d}")
+        print(
+            f"{label:<25} {r['return_pct']*100:>8.2f} {r['max_drawdown_pct']*100:>8.2f} "
+            f"{r['avg_n_positions']:>8.1f} {r['avg_cash_ratio']*100:>8.2f} {r['trades']:>8d}"
+        )
     print(f"{'='*90}")
 
 

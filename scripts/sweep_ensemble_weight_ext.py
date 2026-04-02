@@ -1,4 +1,5 @@
 """Extended sweep: 0.75, 0.80, 0.85, 0.90, 0.95."""
+
 from __future__ import annotations
 
 import subprocess
@@ -42,13 +43,15 @@ for w in weights:
     shutil.copy2(BACKTEST_DIR / "trades.parquet", BACKTEST_DIR / f"trades_{suffix}.parquet")
     shutil.copy2(summary_path, BACKTEST_DIR / f"summary_{suffix}.json")
 
-    results.append({
-        "weight": w,
-        "end_nav": summary["end_nav"],
-        "return_pct": summary["return_pct"],
-        "trades": summary["trades"],
-        "avg_cash_ratio": summary["avg_cash_ratio"],
-    })
+    results.append(
+        {
+            "weight": w,
+            "end_nav": summary["end_nav"],
+            "return_pct": summary["return_pct"],
+            "trades": summary["trades"],
+            "avg_cash_ratio": summary["avg_cash_ratio"],
+        }
+    )
     print(f"  end_nav={summary['end_nav']:.2f}  return={summary['return_pct']*100:.2f}%  trades={summary['trades']}")
 
 # Full comparison

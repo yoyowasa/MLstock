@@ -146,7 +146,9 @@ def train_ensemble_model(
     """Train both Ridge and LGBM, return ensemble model dict."""
     ridge_model = train_ridge_model(train_df, feature_cols, label_col, alpha=ridge_alpha)
     lgbm_model = train_lgb_model(
-        train_df, feature_cols, label_col,
+        train_df,
+        feature_cols,
+        label_col,
         n_estimators=lgbm_n_estimators,
         max_depth=lgbm_max_depth,
         learning_rate=lgbm_learning_rate,
@@ -183,14 +185,18 @@ def train_model(
         return train_ridge_model(train_df, feature_cols, label_col, alpha=ridge_alpha)
     if model_type in ("lgbm", "lightgbm"):
         return train_lgb_model(
-            train_df, feature_cols, label_col,
+            train_df,
+            feature_cols,
+            label_col,
             n_estimators=lgbm_n_estimators,
             max_depth=lgbm_max_depth,
             learning_rate=lgbm_learning_rate,
         )
     if model_type == "ensemble":
         return train_ensemble_model(
-            train_df, feature_cols, label_col,
+            train_df,
+            feature_cols,
+            label_col,
             ridge_alpha=ridge_alpha,
             weight_ridge=ensemble_weight_ridge,
             lgbm_n_estimators=lgbm_n_estimators,

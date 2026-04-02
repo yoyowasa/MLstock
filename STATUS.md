@@ -210,6 +210,7 @@ universe:
 - 2026-04-02: `weekly.py` / `backtest.py` でも読み込み直後に不足 `FEATURE_COLUMNS` を 0.0 補完するようにした。旧テスト fixture の最小列構成でも weekly/backtest が進むよう互換を回復した。`train.py` の最小学習件数制限も 1 行まで許容して、`min_train_weeks=1` のテストケースで `Training failed` を起こさないようにした。
 - 2026-04-02: `tests/test_deadband_golden_metrics.py` の baseline を現行スナップショットに合わせて緩和した。deadband の `raw_minus_off return_pct` は「改善必須」ではなく「非悪化」を基準に変更した。現行データでは deadband 効果が 0 に収束しており、golden を固定改善幅で縛ると pre-push が不安定になるため。
 - 2026-04-02: `tools/audit.ps1` の Python 解決を修正した。従来は `C:\BOT\MLStock\.venv\Scripts\python.exe` 固定で、GitHub Actions の `actions/setup-python` 環境では `VENV_PYTHON_NOT_FOUND` で即失敗していた。`.venv` が無い場合は `python`、次に `py` を解決して使うようにし、ローカルと CI の両方で同じ audit を通せるようにした。
+- 2026-04-02: CI の `python -m black --check .` 失敗に対応し、black が指摘した 17 ファイルを整形した。対象は gap 実装、broker 層、補助分析スクリプト、関連テストで、機能変更は伴わず書式のみを統一した。
 
 ### 次のアクション（Gap戦略）
 - 毎朝のスキャンログ確認（1日平均何銘柄が通過するか把握）

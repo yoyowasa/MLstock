@@ -1,4 +1,5 @@
 """Sweep ensemble_weight_ridge from 0.3 to 0.7 and compare results."""
+
 from __future__ import annotations
 
 import subprocess
@@ -48,13 +49,15 @@ for w in weights:
     shutil.copy2(BACKTEST_DIR / "trades.parquet", BACKTEST_DIR / f"trades_{suffix}.parquet")
     shutil.copy2(summary_path, BACKTEST_DIR / f"summary_{suffix}.json")
 
-    results.append({
-        "weight": w,
-        "end_nav": summary["end_nav"],
-        "return_pct": summary["return_pct"],
-        "trades": summary["trades"],
-        "avg_cash_ratio": summary["avg_cash_ratio"],
-    })
+    results.append(
+        {
+            "weight": w,
+            "end_nav": summary["end_nav"],
+            "return_pct": summary["return_pct"],
+            "trades": summary["trades"],
+            "avg_cash_ratio": summary["avg_cash_ratio"],
+        }
+    )
     print(f"  end_nav={summary['end_nav']:.2f}  return={summary['return_pct']*100:.2f}%  trades={summary['trades']}")
 
 # Final comparison table
@@ -70,15 +73,21 @@ lgbm_path = BACKTEST_DIR / "summary_lgbm.json"
 if ridge_path.exists():
     with open(ridge_path) as f:
         sr = json.load(f)
-    print(f"{'Ridge':<10} {sr['end_nav']:>12.2f} {sr['return_pct']*100:>12.2f} {sr['trades']:>10} {sr['avg_cash_ratio']:>12.4f}")
+    print(
+        f"{'Ridge':<10} {sr['end_nav']:>12.2f} {sr['return_pct']*100:>12.2f} {sr['trades']:>10} {sr['avg_cash_ratio']:>12.4f}"
+    )
 if lgbm_path.exists():
     with open(lgbm_path) as f:
         sl = json.load(f)
-    print(f"{'LGBM':<10} {sl['end_nav']:>12.2f} {sl['return_pct']*100:>12.2f} {sl['trades']:>10} {sl['avg_cash_ratio']:>12.4f}")
+    print(
+        f"{'LGBM':<10} {sl['end_nav']:>12.2f} {sl['return_pct']*100:>12.2f} {sl['trades']:>10} {sl['avg_cash_ratio']:>12.4f}"
+    )
 print("-" * 60)
 
 for r in results:
-    print(f"{'E_'+str(r['weight']):<10} {r['end_nav']:>12.2f} {r['return_pct']*100:>12.2f} {r['trades']:>10} {r['avg_cash_ratio']:>12.4f}")
+    print(
+        f"{'E_'+str(r['weight']):<10} {r['end_nav']:>12.2f} {r['return_pct']*100:>12.2f} {r['trades']:>10} {r['avg_cash_ratio']:>12.4f}"
+    )
 
 best = max(results, key=lambda x: x["return_pct"])
 print(f"\nBest: weight={best['weight']}  return={best['return_pct']*100:.2f}%  nav={best['end_nav']:.2f}")

@@ -89,9 +89,9 @@ def _build_weekly_table(
     weekly["ma_ratio_20w"] = weekly["price"] / weekly["price"].rolling(20, min_periods=20).mean() - 1.0
 
     # 週次 high/low の結合は未実装のため、簡易的に price の rolling max/min で代用する。
-    weekly["high_low_range_4w"] = (
-        weekly["price"].rolling(4).max() - weekly["price"].rolling(4).min()
-    ) / weekly["price"]
+    weekly["high_low_range_4w"] = (weekly["price"].rolling(4).max() - weekly["price"].rolling(4).min()) / weekly[
+        "price"
+    ]
 
     if "volume" in weekly.columns:
         vol_1w = weekly["volume"]
@@ -243,12 +243,12 @@ def run(cfg: AppConfig, symbols: Optional[List[str]] = None) -> Dict[str, int]:
             for col in ("spy_ret_1w", "spy_ret_4w", "spy_vol_4w"):
                 features_df[col] = float("nan")
         # market_breadth: 同一週で ret_1w > 0 の銘柄割合
-        breadth = features_df.groupby("week_start")["ret_1w"].apply(
-            lambda s: (s > 0).sum() / max(len(s), 1)
-        ).rename("market_breadth")
-        features_df = features_df.merge(
-            breadth.reset_index(), on="week_start", how="left", suffixes=("", "_calc")
+        breadth = (
+            features_df.groupby("week_start")["ret_1w"]
+            .apply(lambda s: (s > 0).sum() / max(len(s), 1))
+            .rename("market_breadth")
         )
+        features_df = features_df.merge(breadth.reset_index(), on="week_start", how="left", suffixes=("", "_calc"))
         if "market_breadth_calc" in features_df.columns:
             features_df["market_breadth"] = features_df["market_breadth_calc"]
             features_df = features_df.drop(columns=["market_breadth_calc"])

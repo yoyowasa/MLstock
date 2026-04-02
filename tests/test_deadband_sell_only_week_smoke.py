@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+
 def _parse_float(value: object) -> Optional[float]:
     if value is None:
         return None

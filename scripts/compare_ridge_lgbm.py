@@ -1,4 +1,5 @@
 """Ridge vs LGBM backtest deep comparison analysis."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -28,8 +29,7 @@ with open(BASE / "summary_ridge.json") as f:
 with open(BASE / "summary_lgbm.json") as f:
     sl = json.load(f)
 
-metrics = ["start_nav", "end_nav", "return_pct", "trades",
-           "avg_cash_ratio", "regime_gate_closed_weeks"]
+metrics = ["start_nav", "end_nav", "return_pct", "trades", "avg_cash_ratio", "regime_gate_closed_weeks"]
 print(f"{'Metric':<35} {'Ridge':>15} {'LGBM':>15} {'Diff':>15}")
 print("-" * 80)
 for m in metrics:
@@ -46,6 +46,7 @@ print("=" * 90)
 print("SECTION 2: YEARLY RETURN BREAKDOWN")
 print("=" * 90)
 
+
 def yearly_returns(nav_df: pd.DataFrame) -> pd.DataFrame:
     nav_df = nav_df.sort_values("week_start").copy()
     nav_df["year"] = nav_df["week_start"].dt.year
@@ -58,9 +59,9 @@ def yearly_returns(nav_df: pd.DataFrame) -> pd.DataFrame:
         start_nav = yr_data.iloc[0]["nav"]
         end_nav = yr_data.iloc[-1]["nav"]
         ret = (end_nav / start_nav - 1) * 100 if start_nav > 0 else 0
-        rows.append({"year": yr, "start_nav": start_nav, "end_nav": end_nav,
-                      "return_pct": ret, "weeks": len(yr_data)})
+        rows.append({"year": yr, "start_nav": start_nav, "end_nav": end_nav, "return_pct": ret, "weeks": len(yr_data)})
     return pd.DataFrame(rows)
+
 
 yr_r = yearly_returns(nav_r)
 yr_l = yearly_returns(nav_l)
@@ -70,14 +71,17 @@ print(f"{'Year':<6} {'Ridge %':>10} {'LGBM %':>10} {'Diff %':>10} {'Ridge NAV':>
 print("-" * 70)
 for _, row in merged_yr.iterrows():
     diff = row["return_pct_lgbm"] - row["return_pct_ridge"]
-    print(f"{int(row['year']):<6} {row['return_pct_ridge']:>+10.2f} {row['return_pct_lgbm']:>+10.2f} "
-          f"{diff:>+10.2f} {row['end_nav_ridge']:>12.2f} {row['end_nav_lgbm']:>12.2f}")
+    print(
+        f"{int(row['year']):<6} {row['return_pct_ridge']:>+10.2f} {row['return_pct_lgbm']:>+10.2f} "
+        f"{diff:>+10.2f} {row['end_nav_ridge']:>12.2f} {row['end_nav_lgbm']:>12.2f}"
+    )
 
 # ── SECTION 3: TRADE-LEVEL STATISTICS ──────────────────────────────────────
 print()
 print("=" * 90)
 print("SECTION 3: TRADE-LEVEL STATISTICS")
 print("=" * 90)
+
 
 def trade_stats(trades_df: pd.DataFrame, label: str) -> dict:
     t = trades_df.copy()
@@ -113,6 +117,7 @@ def trade_stats(trades_df: pd.DataFrame, label: str) -> dict:
     }
     return stats
 
+
 sr_stats = trade_stats(trades_r, "Ridge")
 sl_stats = trade_stats(trades_l, "LGBM")
 
@@ -141,7 +146,11 @@ for label, df in [("Ridge", real_r), ("LGBM", real_l)]:
     print(f"    Total cost: ${df['buy_cost'].sum() + df['sell_cost'].sum():.2f}")
     print(f"    Avg win: ${wins['pnl'].mean():.4f}" if len(wins) > 0 else "    Avg win: N/A")
     print(f"    Avg loss: ${losses['pnl'].mean():.4f}" if len(losses) > 0 else "    Avg loss: N/A")
-    print(f"    Win/Loss ratio: {abs(wins['pnl'].mean()/losses['pnl'].mean()):.2f}" if len(wins) > 0 and len(losses) > 0 else "    Win/Loss ratio: N/A")
+    print(
+        f"    Win/Loss ratio: {abs(wins['pnl'].mean()/losses['pnl'].mean()):.2f}"
+        if len(wins) > 0 and len(losses) > 0
+        else "    Win/Loss ratio: N/A"
+    )
 
 # ── SECTION 4: KEEP/HOLD ANALYSIS ──────────────────────────────────────────
 print()
@@ -165,6 +174,7 @@ print("=" * 90)
 print("SECTION 5: YEARLY TRADE COUNTS & WIN RATES")
 print("=" * 90)
 
+
 def yearly_trade_stats(trades_df: pd.DataFrame) -> pd.DataFrame:
     trades_df = trades_df.copy()
     trades_df["year"] = trades_df["week_start"].dt.year
@@ -172,27 +182,34 @@ def yearly_trade_stats(trades_df: pd.DataFrame) -> pd.DataFrame:
     for yr in sorted(trades_df["year"].unique()):
         yt = trades_df[trades_df["year"] == yr]
         wins = yt[yt["pnl"] > 0]
-        rows.append({
-            "year": yr,
-            "trades": len(yt),
-            "win_rate": len(wins)/len(yt)*100 if len(yt) > 0 else 0,
-            "total_pnl": yt["pnl"].sum(),
-            "avg_pnl": yt["pnl"].mean(),
-            "unique_symbols": yt["symbol"].nunique(),
-        })
+        rows.append(
+            {
+                "year": yr,
+                "trades": len(yt),
+                "win_rate": len(wins) / len(yt) * 100 if len(yt) > 0 else 0,
+                "total_pnl": yt["pnl"].sum(),
+                "avg_pnl": yt["pnl"].mean(),
+                "unique_symbols": yt["symbol"].nunique(),
+            }
+        )
     return pd.DataFrame(rows)
+
 
 ytr = yearly_trade_stats(trades_r)
 ytl = yearly_trade_stats(trades_l)
 ytm = ytr.merge(ytl, on="year", suffixes=("_r", "_l"))
 
-print(f"{'Year':<6} {'Trades_R':>9} {'Trades_L':>9} {'WR_R%':>8} {'WR_L%':>8} {'PnL_R':>10} {'PnL_L':>10} {'Sym_R':>7} {'Sym_L':>7}")
+print(
+    f"{'Year':<6} {'Trades_R':>9} {'Trades_L':>9} {'WR_R%':>8} {'WR_L%':>8} {'PnL_R':>10} {'PnL_L':>10} {'Sym_R':>7} {'Sym_L':>7}"
+)
 print("-" * 85)
 for _, row in ytm.iterrows():
-    print(f"{int(row['year']):<6} {int(row['trades_r']):>9} {int(row['trades_l']):>9} "
-          f"{row['win_rate_r']:>8.1f} {row['win_rate_l']:>8.1f} "
-          f"{row['total_pnl_r']:>+10.2f} {row['total_pnl_l']:>+10.2f} "
-          f"{int(row['unique_symbols_r']):>7} {int(row['unique_symbols_l']):>7}")
+    print(
+        f"{int(row['year']):<6} {int(row['trades_r']):>9} {int(row['trades_l']):>9} "
+        f"{row['win_rate_r']:>8.1f} {row['win_rate_l']:>8.1f} "
+        f"{row['total_pnl_r']:>+10.2f} {row['total_pnl_l']:>+10.2f} "
+        f"{int(row['unique_symbols_r']):>7} {int(row['unique_symbols_l']):>7}"
+    )
 
 # ── SECTION 6: DRAWDOWN ANALYSIS ──────────────────────────────────────────
 print()
@@ -200,13 +217,14 @@ print("=" * 90)
 print("SECTION 6: DRAWDOWN ANALYSIS")
 print("=" * 90)
 
+
 def drawdown_analysis(nav_df: pd.DataFrame, label: str):
     nav_df = nav_df.sort_values("week_start").copy()
     navs = nav_df["nav"].values.astype(float)
     peaks = np.maximum.accumulate(navs)
     dd = (navs - peaks) / peaks
     max_dd_idx = np.argmin(dd)
-    peak_idx = np.argmax(navs[:max_dd_idx+1]) if max_dd_idx > 0 else 0
+    peak_idx = np.argmax(navs[: max_dd_idx + 1]) if max_dd_idx > 0 else 0
 
     # Drawdown periods > 5%
     dd_periods = []
@@ -220,7 +238,7 @@ def drawdown_analysis(nav_df: pd.DataFrame, label: str):
             in_dd = False
             dd_periods.append((start_i, i, np.min(dd[start_i:i])))
     if in_dd:
-        dd_periods.append((start_i, len(dd)-1, np.min(dd[start_i:])))
+        dd_periods.append((start_i, len(dd) - 1, np.min(dd[start_i:])))
 
     print(f"\n  [{label}]")
     print(f"    Max Drawdown: {dd[max_dd_idx]*100:.2f}%")
@@ -234,12 +252,14 @@ def drawdown_analysis(nav_df: pd.DataFrame, label: str):
             print(f"    Recovery date: {nav_df.iloc[rec_idx]['week_start'].strftime('%Y-%m-%d')}")
             print(f"    Drawdown duration: {rec_idx - peak_idx} weeks (peak to recovery)")
         else:
-            print(f"    Recovery: NOT YET RECOVERED")
+            print("    Recovery: NOT YET RECOVERED")
 
     print(f"    Drawdown periods > 5%: {len(dd_periods)}")
     for s, e, d in dd_periods:
-        print(f"      {nav_df.iloc[s]['week_start'].strftime('%Y-%m-%d')} → "
-              f"{nav_df.iloc[e]['week_start'].strftime('%Y-%m-%d')}: {d*100:.2f}%")
+        print(
+            f"      {nav_df.iloc[s]['week_start'].strftime('%Y-%m-%d')} → "
+            f"{nav_df.iloc[e]['week_start'].strftime('%Y-%m-%d')}: {d*100:.2f}%"
+        )
 
     # Avg drawdown
     avg_dd = dd[dd < 0].mean() if (dd < 0).any() else 0
@@ -247,6 +267,7 @@ def drawdown_analysis(nav_df: pd.DataFrame, label: str):
     print(f"    % of time in drawdown: {(dd < 0).mean()*100:.1f}%")
 
     return dd
+
 
 dd_r = drawdown_analysis(nav_r, "Ridge")
 dd_l = drawdown_analysis(nav_l, "LGBM")
@@ -256,6 +277,7 @@ print()
 print("=" * 90)
 print("SECTION 7: RISK-ADJUSTED METRICS")
 print("=" * 90)
+
 
 def risk_metrics(nav_df: pd.DataFrame, label: str):
     nav_df = nav_df.sort_values("week_start").copy()
@@ -279,7 +301,7 @@ def risk_metrics(nav_df: pd.DataFrame, label: str):
     # Profit factor
     pos_weeks = weekly_returns[weekly_returns > 0].sum()
     neg_weeks = abs(weekly_returns[weekly_returns < 0].sum())
-    profit_factor = pos_weeks / neg_weeks if neg_weeks > 0 else float('inf')
+    profit_factor = pos_weeks / neg_weeks if neg_weeks > 0 else float("inf")
 
     print(f"\n  [{label}]")
     print(f"    Annualized Return: {ann_return*100:.2f}%")
@@ -295,9 +317,16 @@ def risk_metrics(nav_df: pd.DataFrame, label: str):
     print(f"    Avg +week: {weekly_returns[weekly_returns>0].mean()*100:+.3f}%")
     print(f"    Avg -week: {weekly_returns[weekly_returns<0].mean()*100:+.3f}%")
 
-    return {"sharpe": sharpe, "sortino": sortino, "calmar": calmar,
-            "ann_ret": ann_return, "ann_vol": ann_vol, "max_dd": max_dd,
-            "profit_factor": profit_factor}
+    return {
+        "sharpe": sharpe,
+        "sortino": sortino,
+        "calmar": calmar,
+        "ann_ret": ann_return,
+        "ann_vol": ann_vol,
+        "max_dd": max_dd,
+        "profit_factor": profit_factor,
+    }
+
 
 rm_r = risk_metrics(nav_r, "Ridge")
 rm_l = risk_metrics(nav_l, "LGBM")
@@ -356,13 +385,16 @@ print(f"{'Max n_positions':<35} {nav_r['n_positions'].max():>15} {nav_l['n_posit
 print(f"{'Min n_positions':<35} {nav_r['n_positions'].min():>15} {nav_l['n_positions'].min():>15}")
 print(f"{'Avg cash_usd':<35} {nav_r['cash_usd'].mean():>15.2f} {nav_l['cash_usd'].mean():>15.2f}")
 print(f"{'Avg positions_value':<35} {nav_r['positions_value'].mean():>15.2f} {nav_l['positions_value'].mean():>15.2f}")
-print(f"{'Avg cash_ratio':<35} {(nav_r['cash_usd']/nav_r['nav']).mean():>15.4f} {(nav_l['cash_usd']/nav_l['nav']).mean():>15.4f}")
+print(
+    f"{'Avg cash_ratio':<35} {(nav_r['cash_usd']/nav_r['nav']).mean():>15.4f} {(nav_l['cash_usd']/nav_l['nav']).mean():>15.4f}"
+)
 
 # ── SECTION 10: QUARTERLY RETURN COMPARISON ────────────────────────────────
 print()
 print("=" * 90)
 print("SECTION 10: QUARTERLY RETURN COMPARISON")
 print("=" * 90)
+
 
 def quarterly_returns(nav_df: pd.DataFrame) -> pd.DataFrame:
     nav_df = nav_df.sort_values("week_start").copy()
@@ -378,6 +410,7 @@ def quarterly_returns(nav_df: pd.DataFrame) -> pd.DataFrame:
         rows.append({"quarter": str(q), "return_pct": ret})
     return pd.DataFrame(rows)
 
+
 qr = quarterly_returns(nav_r)
 ql = quarterly_returns(nav_l)
 qm = qr.merge(ql, on="quarter", suffixes=("_ridge", "_lgbm"))
@@ -387,8 +420,10 @@ print("-" * 55)
 for _, row in qm.iterrows():
     diff = row["return_pct_lgbm"] - row["return_pct_ridge"]
     better = "LGBM" if diff > 0 else "Ridge" if diff < 0 else "Tie"
-    print(f"{row['quarter']:<10} {row['return_pct_ridge']:>+10.2f} {row['return_pct_lgbm']:>+10.2f} "
-          f"{diff:>+10.2f} {better:>10}")
+    print(
+        f"{row['quarter']:<10} {row['return_pct_ridge']:>+10.2f} {row['return_pct_lgbm']:>+10.2f} "
+        f"{diff:>+10.2f} {better:>10}"
+    )
 
 # Count quarterly wins
 r_wins = sum(1 for _, row in qm.iterrows() if row["return_pct_ridge"] > row["return_pct_lgbm"])
@@ -400,6 +435,7 @@ print()
 print("=" * 90)
 print("SECTION 11: WEEKLY PNL STREAK ANALYSIS")
 print("=" * 90)
+
 
 def streak_analysis(nav_df: pd.DataFrame, label: str):
     nav_df = nav_df.sort_values("week_start").copy()
@@ -428,6 +464,7 @@ def streak_analysis(nav_df: pd.DataFrame, label: str):
     print(f"  [{label}]")
     print(f"    Max winning streak: {max_win_streak} weeks")
     print(f"    Max losing streak: {max_loss_streak} weeks")
+
 
 streak_analysis(nav_r, "Ridge")
 streak_analysis(nav_l, "LGBM")

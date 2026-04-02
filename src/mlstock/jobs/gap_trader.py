@@ -755,7 +755,9 @@ def run_gap_trader(
                 _emit(logger, "minute_bar_fetch_failed", error=str(exc), batch=batch)
                 continue
             for symbol in batch:
-                bars_by_symbol[symbol] = _normalize_minute_bars(batch_raw.get(symbol, []), tz=tz, session_date=session_date)
+                bars_by_symbol[symbol] = _normalize_minute_bars(
+                    batch_raw.get(symbol, []), tz=tz, session_date=session_date
+                )
 
         for symbol in symbols:
             bars = bars_by_symbol.get(symbol, [])

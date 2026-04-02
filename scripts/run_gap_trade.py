@@ -34,7 +34,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-loops", type=int, default=None, help="Limit trader loop count for debug")
     parser.add_argument("--symbols", type=str, default=None, help="Comma-separated symbols (override seed universe)")
     parser.add_argument("--live", action="store_true", help="Enable real orders (default is dry-run)")
-    parser.add_argument("--replay-log", type=Path, default=None, help="Replay prior scanner log and calculate hypothetical PNL")
+    parser.add_argument(
+        "--replay-log", type=Path, default=None, help="Replay prior scanner log and calculate hypothetical PNL"
+    )
     return parser.parse_args()
 
 

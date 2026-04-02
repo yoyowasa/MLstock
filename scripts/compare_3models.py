@@ -1,4 +1,5 @@
 """3-model comparison: Ridge vs LGBM vs Ensemble(0.70)."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -67,6 +68,7 @@ print("=" * 90)
 print("SECTION 3: YEARLY RETURNS")
 print("=" * 90)
 
+
 def yearly_ret(nav_df):
     nav_df = nav_df.sort_values("week_start").copy()
     nav_df["year"] = nav_df["week_start"].dt.year
@@ -77,6 +79,7 @@ def yearly_ret(nav_df):
             continue
         rows[yr] = (yd.iloc[-1]["nav"] / yd.iloc[0]["nav"] - 1) * 100
     return rows
+
 
 yr_data = {l: yearly_ret(data[l]["nav"]) for l in models}
 all_years = sorted(set().union(*(yr_data[l].keys() for l in models)))
@@ -92,6 +95,7 @@ print()
 print("=" * 90)
 print("SECTION 4: RISK-ADJUSTED METRICS")
 print("=" * 90)
+
 
 def calc_risk(nav_df, label):
     nav_df = nav_df.sort_values("week_start").copy()
@@ -110,26 +114,33 @@ def calc_risk(nav_df, label):
     calmar = ann_ret / max_dd if max_dd > 0 else 0
     pos = wr[wr > 0].sum()
     neg = abs(wr[wr < 0].sum())
-    pf = pos / neg if neg > 0 else float('inf')
+    pf = pos / neg if neg > 0 else float("inf")
 
     # DD period details
     max_dd_idx = np.argmin(dd)
-    peak_idx = np.argmax(navs[:max_dd_idx + 1]) if max_dd_idx > 0 else 0
+    peak_idx = np.argmax(navs[: max_dd_idx + 1]) if max_dd_idx > 0 else 0
     peak_date = nav_df.iloc[peak_idx]["week_start"].strftime("%Y-%m-%d")
     trough_date = nav_df.iloc[max_dd_idx]["week_start"].strftime("%Y-%m-%d")
     recovery = np.where(navs[max_dd_idx:] >= peaks[max_dd_idx])[0]
     recovery_weeks = (max_dd_idx + recovery[0] - peak_idx) if len(recovery) > 0 else "N/R"
 
     return {
-        "ann_ret%": ann_ret * 100, "ann_vol%": ann_vol * 100,
-        "sharpe": sharpe, "sortino": sortino, "calmar": calmar,
-        "max_dd%": -max_dd * 100, "profit_factor": pf,
+        "ann_ret%": ann_ret * 100,
+        "ann_vol%": ann_vol * 100,
+        "sharpe": sharpe,
+        "sortino": sortino,
+        "calmar": calmar,
+        "max_dd%": -max_dd * 100,
+        "profit_factor": pf,
         "weekly_wr%": (wr > 0).mean() * 100,
-        "best_wk%": wr.max() * 100, "worst_wk%": wr.min() * 100,
-        "dd_peak": peak_date, "dd_trough": trough_date,
+        "best_wk%": wr.max() * 100,
+        "worst_wk%": wr.min() * 100,
+        "dd_peak": peak_date,
+        "dd_trough": trough_date,
         "dd_recovery_wk": recovery_weeks,
         "max_lose_streak": 0,
     }
+
 
 risk = {}
 for label in models:
@@ -137,9 +148,21 @@ for label in models:
 
 print(f"{'Metric':<25} {'Ridge':>15} {'LGBM':>15} {'E_70':>15}")
 print("-" * 70)
-for m in ["ann_ret%", "ann_vol%", "sharpe", "sortino", "calmar", "max_dd%",
-          "profit_factor", "weekly_wr%", "best_wk%", "worst_wk%",
-          "dd_peak", "dd_trough", "dd_recovery_wk"]:
+for m in [
+    "ann_ret%",
+    "ann_vol%",
+    "sharpe",
+    "sortino",
+    "calmar",
+    "max_dd%",
+    "profit_factor",
+    "weekly_wr%",
+    "best_wk%",
+    "worst_wk%",
+    "dd_peak",
+    "dd_trough",
+    "dd_recovery_wk",
+]:
     vals = [risk[l].get(m, "") for l in models]
     if all(isinstance(v, (int, float)) for v in vals):
         print(f"{m:<25} {vals[0]:>15.3f} {vals[1]:>15.3f} {vals[2]:>15.3f}")
@@ -152,6 +175,7 @@ print("=" * 90)
 print("SECTION 5: QUARTERLY WIN COMPARISON")
 print("=" * 90)
 
+
 def quarterly_ret(nav_df):
     nav_df = nav_df.sort_values("week_start").copy()
     nav_df["q"] = nav_df["week_start"].dt.to_period("Q")
@@ -162,6 +186,7 @@ def quarterly_ret(nav_df):
             continue
         rows[str(q)] = (qd.iloc[-1]["nav"] / qd.iloc[0]["nav"] - 1) * 100
     return rows
+
 
 qr = {l: quarterly_ret(data[l]["nav"]) for l in models}
 all_q = sorted(set().union(*(qr[l].keys() for l in models)))
