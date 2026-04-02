@@ -82,10 +82,42 @@ Write-Host "[audit] REPO_ID=$repoId"
 Write-Host "[audit] GIT_ROOT=$gitRoot"
 Write-Host "[audit] ORIGIN=$origin"
 
-if (-not (Test-Path $pythonExe)) {
-    Write-Error "VENV_PYTHON_NOT_FOUND path=$pythonExe"
+function Resolve-PythonExe {
+    param(
+        [string]$RepoRoot,
+        [string]$PreferredPath
+    )
+
+    if (Test-Path $PreferredPath) {
+        return $PreferredPath
+    }
+
+    $candidates = @()
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($null -ne $pythonCmd -and -not [string]::IsNullOrWhiteSpace($pythonCmd.Source)) {
+        $candidates += $pythonCmd.Source
+    }
+    $pyCmd = Get-Command py -ErrorAction SilentlyContinue
+    if ($null -ne $pyCmd -and -not [string]::IsNullOrWhiteSpace($pyCmd.Source)) {
+        $candidates += $pyCmd.Source
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+$resolvedPythonExe = Resolve-PythonExe -RepoRoot $repoRoot -PreferredPath $pythonExe
+if ($null -eq $resolvedPythonExe) {
+    Write-Error "PYTHON_NOT_FOUND preferred=$pythonExe"
     exit 2
 }
+$pythonExe = $resolvedPythonExe
+Write-Host "[audit] PYTHON_EXE=$pythonExe"
 
 $ruffRequired = [bool]$cfg["ruff_required"]
 $pytestRequired = [bool]$cfg["pytest_required"]
