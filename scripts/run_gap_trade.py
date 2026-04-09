@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from mlstock.brokers import AlpacaOrderBroker, WebullOrderBroker
 from mlstock.config.loader import load_config
 from mlstock.data.alpaca.client import AlpacaClient
+from mlstock.data.twelvedata.client import TwelveDataClient
 from mlstock.jobs.gap_scanner import scan_gap_candidates
 from mlstock.jobs.gap_trader import run_gap_trader, simulate_gap_candidates_session
 from mlstock.jobs.options_filter import filter_unusual_options_activity
@@ -36,6 +37,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--live", action="store_true", help="Enable real orders (default is dry-run)")
     parser.add_argument(
         "--replay-log", type=Path, default=None, help="Replay prior scanner log and calculate hypothetical PNL"
+    )
+    parser.add_argument(
+        "--compare-data-sources",
+        action="store_true",
+        help="Compare today's Alpaca scanner result with Twelve Data on the same symbol set",
     )
     return parser.parse_args()
 
@@ -187,6 +193,10 @@ def _gap_candidate_from_dict(payload: Dict[str, Any]):
     )
 
 
+def _candidate_lookup(candidates: List[Any]) -> Dict[str, Dict[str, Any]]:
+    return {item.symbol: item.to_dict() for item in candidates}
+
+
 def main() -> None:
     load_dotenv(override=False)
     args = _parse_args()
@@ -203,6 +213,7 @@ def main() -> None:
         skip_options=args.skip_options,
         skip_wait=args.skip_wait,
         live=args.live,
+        compare_data_sources=args.compare_data_sources,
     )
 
     data_client = AlpacaClient.from_env(cfg.alpaca.data_base_url)
@@ -265,6 +276,7 @@ def main() -> None:
         logger=logger,
         as_of=datetime.now(tz),
         symbols=symbols,
+        data_source="alpaca",
     )
     log_event(
         logger,
@@ -274,6 +286,59 @@ def main() -> None:
         candidates=[item.to_dict() for item in candidates],
     )
     print(f"scanner: {len(candidates)} candidates")
+
+    if args.compare_data_sources:
+        compare_symbols = symbols or [item.symbol for item in candidates]
+        if not compare_symbols:
+            log_event(logger, "scanner_compare_skipped", reason="no_compare_symbols")
+            print("compare: skipped (no symbols)")
+        else:
+            try:
+                td_client = TwelveDataClient.from_env()
+            except Exception as exc:
+                log_event(logger, "scanner_compare_skipped", reason="twelvedata_key_missing", error=str(exc))
+                print("compare: skipped (TWELVEDATA_API_KEY missing)")
+            else:
+                td_candidates = scan_gap_candidates(
+                    cfg=cfg,
+                    gap_cfg=gap_cfg,
+                    data_client=td_client,
+                    logger=logger,
+                    as_of=datetime.now(tz),
+                    symbols=compare_symbols,
+                    data_source="twelvedata",
+                )
+                alpaca_lookup = _candidate_lookup(candidates)
+                td_lookup = _candidate_lookup(td_candidates)
+                overlap = sorted(set(alpaca_lookup.keys()) & set(td_lookup.keys()))
+                alpaca_only = sorted(set(alpaca_lookup.keys()) - set(td_lookup.keys()))
+                td_only = sorted(set(td_lookup.keys()) - set(alpaca_lookup.keys()))
+                per_symbol = []
+                for symbol in sorted(set(compare_symbols)):
+                    per_symbol.append(
+                        {
+                            "symbol": symbol,
+                            "alpaca": alpaca_lookup.get(symbol),
+                            "twelvedata": td_lookup.get(symbol),
+                        }
+                    )
+                log_event(
+                    logger,
+                    "scanner_compare_complete",
+                    compare_symbols=sorted(set(compare_symbols)),
+                    alpaca_count=len(candidates),
+                    twelvedata_count=len(td_candidates),
+                    overlap=overlap,
+                    alpaca_only=alpaca_only,
+                    twelvedata_only=td_only,
+                    per_symbol=per_symbol,
+                )
+                print(
+                    "compare:"
+                    f" alpaca={len(candidates)}"
+                    f" twelvedata={len(td_candidates)}"
+                    f" overlap={len(overlap)}"
+                )
 
     if not candidates:
         log_event(logger, "stop_no_candidates")

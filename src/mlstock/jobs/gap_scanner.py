@@ -13,6 +13,7 @@ from mlstock.config.schema import AppConfig
 from mlstock.data.alpaca.client import AlpacaClient
 from mlstock.data.storage.parquet import read_parquet
 from mlstock.data.storage.paths import reference_seed_symbols_path
+from mlstock.data.twelvedata.client import TwelveDataClient
 
 
 @dataclass(frozen=True)
@@ -313,6 +314,114 @@ def _build_open_stats(
     return stats
 
 
+def _build_daily_stats_twelvedata(
+    client: TwelveDataClient,
+    cfg: AppConfig,
+    symbols: List[str],
+    trade_date_local: date,
+    lookback_volume_days: int,
+    logger: Optional[logging.Logger] = None,
+) -> Dict[str, _DailyStats]:
+    stats: Dict[str, _DailyStats] = {}
+    end_date = trade_date_local.strftime("%Y-%m-%d")
+    start_date = (trade_date_local - timedelta(days=120)).strftime("%Y-%m-%d")
+    for symbol in symbols:
+        try:
+            payload = client.get_time_series(
+                symbol=symbol,
+                interval="1day",
+                start_date=start_date,
+                end_date=end_date,
+                outputsize=max(lookback_volume_days + 10, 40),
+                timezone=cfg.project.timezone,
+            )
+        except Exception as exc:
+            _emit(logger, "twelvedata_daily_fetch_failed", symbol=symbol, error=str(exc))
+            continue
+        values = payload.get("values") if isinstance(payload, dict) else None
+        if not isinstance(values, list):
+            continue
+        rows: List[tuple[date, float, float]] = []
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            dt_raw = item.get("datetime")
+            close_raw = item.get("close")
+            volume_raw = item.get("volume")
+            if dt_raw is None or close_raw is None or volume_raw is None:
+                continue
+            try:
+                local_date = pd.Timestamp(str(dt_raw)).date()
+                close = float(close_raw)
+                volume = float(volume_raw)
+            except (TypeError, ValueError):
+                continue
+            if local_date >= trade_date_local:
+                continue
+            rows.append((local_date, close, volume))
+        if not rows:
+            continue
+        rows.sort(key=lambda row: row[0])
+        volumes = [row[2] for row in rows[-lookback_volume_days:] if row[2] >= 0]
+        if not volumes:
+            continue
+        stats[symbol] = _DailyStats(prev_close=rows[-1][1], avg_volume=sum(volumes) / float(len(volumes)))
+    return stats
+
+
+def _build_open_stats_twelvedata(
+    client: TwelveDataClient,
+    cfg: AppConfig,
+    symbols: List[str],
+    trade_date_local: date,
+    logger: Optional[logging.Logger] = None,
+) -> Dict[str, _OpenStats]:
+    stats: Dict[str, _OpenStats] = {}
+    start_date = f"{trade_date_local.isoformat()} 09:30:00"
+    end_date = f"{trade_date_local.isoformat()} 09:35:00"
+    for symbol in symbols:
+        try:
+            payload = client.get_time_series(
+                symbol=symbol,
+                interval="1min",
+                start_date=start_date,
+                end_date=end_date,
+                outputsize=10,
+                timezone=cfg.project.timezone,
+            )
+        except Exception as exc:
+            _emit(logger, "twelvedata_open_fetch_failed", symbol=symbol, error=str(exc))
+            continue
+        values = payload.get("values") if isinstance(payload, dict) else None
+        if not isinstance(values, list):
+            continue
+        normalized: List[tuple[datetime, float, float]] = []
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            dt_raw = item.get("datetime")
+            open_raw = item.get("open")
+            volume_raw = item.get("volume")
+            if dt_raw is None or open_raw is None or volume_raw is None:
+                continue
+            try:
+                ts = pd.Timestamp(str(dt_raw), tz=cfg.project.timezone).to_pydatetime()
+                open_price = float(open_raw)
+                volume = float(volume_raw)
+            except (TypeError, ValueError):
+                continue
+            normalized.append((ts, open_price, volume))
+        if not normalized:
+            continue
+        normalized.sort(key=lambda row: row[0])
+        stats[symbol] = _OpenStats(
+            open_price=normalized[0][1],
+            first_window_volume=sum(row[2] for row in normalized),
+            bars_in_window=len(normalized),
+        )
+    return stats
+
+
 def _safe_mapping_get(mapping: Any, *keys: str) -> Any:
     for key in keys:
         try:
@@ -423,10 +532,11 @@ def _fetch_market_caps_m(
 def scan_gap_candidates(
     cfg: AppConfig,
     gap_cfg: Mapping[str, Any],
-    data_client: AlpacaClient,
+    data_client: AlpacaClient | TwelveDataClient,
     logger: Optional[logging.Logger] = None,
     as_of: Optional[datetime] = None,
     symbols: Optional[List[str]] = None,
+    data_source: str = "alpaca",
 ) -> List[GapCandidate]:
     settings, universe = _load_settings(gap_cfg)
     tz = ZoneInfo(cfg.project.timezone)
@@ -437,23 +547,46 @@ def scan_gap_candidates(
     if not universe_symbols:
         return []
 
-    daily_stats = _build_daily_stats(
-        client=data_client,
-        cfg=cfg,
-        symbols=universe_symbols,
-        trade_date_local=trade_date,
-        lookback_volume_days=settings.lookback_volume_days,
-    )
+    if data_source == "alpaca":
+        daily_stats = _build_daily_stats(
+            client=data_client,
+            cfg=cfg,
+            symbols=universe_symbols,
+            trade_date_local=trade_date,
+            lookback_volume_days=settings.lookback_volume_days,
+        )
+    elif data_source == "twelvedata":
+        if not isinstance(data_client, TwelveDataClient):
+            raise TypeError("twelvedata source requires TwelveDataClient")
+        daily_stats = _build_daily_stats_twelvedata(
+            client=data_client,
+            cfg=cfg,
+            symbols=universe_symbols,
+            trade_date_local=trade_date,
+            lookback_volume_days=settings.lookback_volume_days,
+            logger=logger,
+        )
+    else:
+        raise ValueError(f"Unsupported data_source: {data_source}")
     if not daily_stats:
         return []
 
-    open_stats = _build_open_stats(
-        client=data_client,
-        cfg=cfg,
-        symbols=list(daily_stats.keys()),
-        trade_date_local=trade_date,
-        as_of_local=as_of_local,
-    )
+    if data_source == "alpaca":
+        open_stats = _build_open_stats(
+            client=data_client,
+            cfg=cfg,
+            symbols=list(daily_stats.keys()),
+            trade_date_local=trade_date,
+            as_of_local=as_of_local,
+        )
+    else:
+        open_stats = _build_open_stats_twelvedata(
+            client=data_client,
+            cfg=cfg,
+            symbols=list(daily_stats.keys()),
+            trade_date_local=trade_date,
+            logger=logger,
+        )
     if not open_stats:
         return []
 

@@ -234,6 +234,12 @@ def _compute_vwap(bars: Sequence[MinuteBar]) -> Optional[float]:
     return pv / volume
 
 
+def _latest_close_price(bars: Sequence[MinuteBar]) -> Optional[float]:
+    if not bars:
+        return None
+    return bars[-1].close_price
+
+
 def _entry_conditions_met(
     bars: Sequence[MinuteBar],
     open_price: float,
@@ -701,8 +707,29 @@ def run_gap_trader(
             break
 
         if now_local >= force_close:
+            force_close_bars: Dict[str, List[MinuteBar]] = {symbol: [] for symbol in tracked_positions.keys()}
+            tracked_symbols = sorted(tracked_positions.keys())
+            for batch in _chunk(tracked_symbols, batch_size):
+                try:
+                    batch_raw = _fetch_bars_batch(
+                        client=data_client,
+                        cfg=cfg,
+                        symbols=batch,
+                        start_local=session_open,
+                        end_local=now_local,
+                    )
+                except Exception as exc:
+                    _emit(logger, "force_close_bar_fetch_failed", error=str(exc), batch=batch)
+                    continue
+                for symbol in batch:
+                    force_close_bars[symbol] = _normalize_minute_bars(
+                        batch_raw.get(symbol, []), tz=tz, session_date=session_date
+                    )
             for symbol, position in list(tracked_positions.items()):
                 try:
+                    symbol_bars = force_close_bars.get(symbol, [])
+                    latest_close = _latest_close_price(symbol_bars)
+                    exit_price = position.entry_price if latest_close is None else latest_close
                     order = _submit_order(
                         order_broker=order_broker,
                         symbol=symbol,
@@ -715,7 +742,7 @@ def run_gap_trader(
                     closed = _close_position(
                         tracked_positions=tracked_positions,
                         symbol=symbol,
-                        exit_price=position.entry_price,
+                        exit_price=exit_price,
                         reason="force_close",
                         closed_at=now_local.isoformat(),
                     )
@@ -725,7 +752,7 @@ def run_gap_trader(
                         symbol=symbol,
                         qty=position.qty,
                         entry_price=position.entry_price,
-                        exit_price=position.entry_price,
+                        exit_price=exit_price,
                         realized_pnl_usd=0.0 if closed is None else round(closed.realized_pnl_usd, 6),
                         realized_pnl_pct=0.0 if closed is None else round(closed.realized_pnl_pct, 6),
                         order_id=order.order_id,

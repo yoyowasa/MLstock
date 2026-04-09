@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sys,json; [print\\(f''''  count={d[count]} symbols={d[symbols]}''''\\) for line in sys.stdin for d in [json.loads\\(line\\)] if d.get\\(''''message''''\\)==''''scanner_complete'''']\")",
+      "Bash(done)",
+      "Bash(.venv/Scripts/python.exe -c \":*)"
+    ]
+  }
+}

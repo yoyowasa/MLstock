@@ -269,3 +269,25 @@ universe:
 - 仕様変更・修正・運用変更・検証結果は日付付きで追記する
 - gap 戦略と週次 pipeline の履歴を混同しない
 - 未確認事項は確定事項として書かない
+
+## 2026-04-02
+- 2026-04-09: `.github/workflows/audit.yml` を削除した。`ci.yml` と監査内容が重複していたため、品質チェックを CI に一本化した。影響: GitHub Actions の実行重複と通知ノイズを削減した。
+- weekly / backtest / execution 系の仕様書・スクリプト・実装・テストを `C:\BOT\WEBULLWEEK` へ分離した。
+- `MLStock` 側には gap 系のみ残し、weekly で共有していた基盤は `WEBULLWEEK` へ複製した。
+- `PROJECT_SPEC.md` / `RUNBOOK.md` / `README.md` は `MLStock` 側を stub に差し替え、参照先を明示した。
+- gap scanner に `Twelve Data` 比較モードを追加した。`--compare-data-sources` で、当日の Alpaca 候補シンボルに対して Twelve Data の同条件スキャンを並べて記録できる。
+- `src\mlstock\data\twelvedata\client.py` を追加し、`/time_series` ベースで日足・寄り後5分の比較取得を実装した。
+- Twelve Data 無料枠を考慮し、比較対象は `--symbols` 指定が無ければその日の Alpaca 候補シンボルに限定する。
+- `TWELVEDATA_API_KEY` 未設定時は比較を落とさずスキップし、理由をログへ残す。
+- gap 側 `load_config()` が root `config.yaml` を必要としていたため、weekly 分離後も共有設定 `config.yaml` / `config.local.yaml` を `MLStock` に複製で戻した。
+
+- 2026-04-02: gap 側 load_config() が root config.yaml を必要としていたため、weekly 分離後も共有設定 config.yaml / config.local.yaml を MLStock に複製で戻した。
+
+- 2026-04-02: Twelve Data API キー疎通を確認。AAPL 1day は取得成功。.env の TWELVEDATA_BASE_URL にコメントが連結しており 404 だったため修正した。
+- 2026-04-02: compare 用の試験として 2026-04-01 09:35 ET の CAI / AAOI を Alpaca と Twelve Data で比較。Alpaca は 2 銘柄通過、Twelve Data は 0 銘柄だった。
+- 2026-04-02: Twelve Data 無料枠は 8 credits/min 制限に到達しやすく、追加取得時に 429 (current limit being 8) を確認。gap の全量比較には無料枠のままでは厳しい。
+- 2026-04-02: `scripts\\run_gap_dry_run_skip_options.ps1` を追加し、`--skip-options` の gap dry_run を毎営業日 22:00 JST に実行する定期タスク `MLStock_GapDryRun_SkipOptions_Daily` を登録した。旧 one-shot `MLStock_GapDryRun_SkipOptions_20260403` は削除した。
+- 2026-04-02: タスク運用の確認では、単発/定期の区別、最終実行時刻、次回実行時刻、実行結果を task metadata で先に確認するルールを `AGENTS.md` に追加した。
+- 2026-04-09: `force_close_exit` が entry price で仮計算される穴を修正し、強制クローズ直前に最新1分足を取り直して exit price / realized PNL を計算するようにした。
+- 2026-04-09: `scripts\\summarize_gap_logs.py` を追加し、dry-run / live の gap ログから scanner count、entry/exit、仮PNL を日次でまとめて見られるようにした。
+- 2026-04-09: `GAP_PROJECT_SPEC.md` に gap 戦略の実装完了条件 `P0-P2` を追記した。影響: scan-only、dry-run、Webull 実注文、監視、発注統制の到達条件を仕様書上で参照できるようにした。
