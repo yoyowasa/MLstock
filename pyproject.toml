@@ -58,3 +58,6 @@ ignore_errors = true
 namespace_packages = false
 disable_error_code = ["import-untyped", "unused-ignore"]
 exclude = '(^|/)(\.venv|venv|build|dist|\.git)/|(^|/)conftest\.py$'
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
