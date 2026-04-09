@@ -41,7 +41,9 @@ class TwelveDataClient:
     @classmethod
     def from_env(cls, base_url: Optional[str] = None) -> "TwelveDataClient":
         creds = load_twelvedata_api_key()
-        return cls(api_key=creds.api_key, base_url=base_url or os.getenv("TWELVEDATA_BASE_URL", "https://api.twelvedata.com"))
+        return cls(
+            api_key=creds.api_key, base_url=base_url or os.getenv("TWELVEDATA_BASE_URL", "https://api.twelvedata.com")
+        )
 
     def _request(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
