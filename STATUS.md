@@ -291,3 +291,11 @@ universe:
 - 2026-04-09: `force_close_exit` が entry price で仮計算される穴を修正し、強制クローズ直前に最新1分足を取り直して exit price / realized PNL を計算するようにした。
 - 2026-04-09: `scripts\\summarize_gap_logs.py` を追加し、dry-run / live の gap ログから scanner count、entry/exit、仮PNL を日次でまとめて見られるようにした。
 - 2026-04-09: `GAP_PROJECT_SPEC.md` に gap 戦略の実装完了条件 `P0-P2` を追記した。影響: scan-only、dry-run、Webull 実注文、監視、発注統制の到達条件を仕様書上で参照できるようにした。
+
+- 2026-04-09: scripts\\run_gap_live_skip_options.ps1 を追加し、今夜 22:00 JST に --skip-options --live を 1 回だけ実行するタスク MLStock_GapLive_SkipOptions_20260409 を登録した。重複実行防止のため MLStock_GapDryRun_SkipOptions_Daily は一時的に無効化し、2026-04-10 08:00 JST に再有効化するタスク MLStock_GapDryRun_Reenable_20260410 を登録した。
+
+- 2026-04-09: 今夜の live 実行は見送り、MLStock_GapLive_SkipOptions_20260409 を削除した。MLStock_GapDryRun_SkipOptions_Daily を再有効化し、MLStock_GapDryRun_Reenable_20260410 は不要になったため削除した。
+- 2026-04-10: gap の preflight 診断を見直した。`scripts\\run_gap_trade.py` の preflight は `bars=0` でも停止根拠にせず、`preflight_iex_bars_warning` として warning 扱いに変更した。影響: 偽陰性の `SPY bars=0` を致命扱いせず、実運用ログで区別して追跡できる。
+- 2026-04-10: gap の scan 開始待機を 09:30:05 ET から 09:30:20 ET に変更した。影響: 寄り直後の 1 分足確定遅延による preflight 偽陰性を減らしつつ、scanner 本体は同じ営業日の寄り後データを使う。
+- 2026-04-10: `src\\mlstock\\jobs\\gap_scanner.py` に `scanner_diagnostics` ログを追加した。`universe_count`, `daily_count`, `open_count`, `missing_open_count`, `liquid_price_count`, `gap_ge_2_count`, `raw_candidate_count`, `candidate_count` を日次で記録する。影響: `count=0` の原因を相場要因と取得品質要因に分けて継続監視できる。
+- 2026-04-10: `scripts\\summarize_gap_logs.py` を拡張し、`scanner_diagnostics` をサマリ出力に含めるようにした。影響: 直近ログをまとめて見るだけで `open_count` や `missing_open_count` の日次ばらつきを追跡できる。既存の古いログには `scanner_diagnostics` が無いため空で表示される。

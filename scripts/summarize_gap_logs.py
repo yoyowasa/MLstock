@@ -37,6 +37,7 @@ def _session_label(path: Path, first_ts: Optional[str]) -> str:
 def _summarize_log(path: Path) -> Dict[str, Any]:
     scanner_count = 0
     scanner_symbols: List[str] = []
+    scanner_diagnostics: Dict[str, Any] = {}
     options_selected: List[str] = []
     entry_symbols: List[str] = []
     exit_reasons: Counter[str] = Counter()
@@ -55,6 +56,19 @@ def _summarize_log(path: Path) -> Dict[str, Any]:
             if message == "scanner_complete":
                 scanner_count = int(payload.get("count", 0))
                 scanner_symbols = [str(item).upper() for item in payload.get("symbols", []) if str(item).strip()]
+            elif message == "scanner_diagnostics":
+                scanner_diagnostics = {
+                    "data_source": payload.get("data_source"),
+                    "trade_date": payload.get("trade_date"),
+                    "universe_count": int(payload.get("universe_count", 0)),
+                    "daily_count": int(payload.get("daily_count", 0)),
+                    "open_count": int(payload.get("open_count", 0)),
+                    "missing_open_count": int(payload.get("missing_open_count", 0)),
+                    "liquid_price_count": int(payload.get("liquid_price_count", 0)),
+                    "gap_ge_2_count": int(payload.get("gap_ge_2_count", 0)),
+                    "raw_candidate_count": int(payload.get("raw_candidate_count", 0)),
+                    "candidate_count": int(payload.get("candidate_count", 0)),
+                }
             elif message == "options_skipped":
                 options_selected = [str(item).upper() for item in payload.get("selected", []) if str(item).strip()]
             elif message == "options_filter_complete":
@@ -82,6 +96,7 @@ def _summarize_log(path: Path) -> Dict[str, Any]:
         "session": _session_label(path, first_ts),
         "scanner_count": scanner_count,
         "scanner_symbols": scanner_symbols,
+        "scanner_diagnostics": scanner_diagnostics,
         "options_selected": options_selected,
         "entry_symbols": entry_symbols,
         "exit_reasons": dict(exit_reasons),

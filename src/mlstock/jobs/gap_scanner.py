@@ -569,6 +569,20 @@ def scan_gap_candidates(
     else:
         raise ValueError(f"Unsupported data_source: {data_source}")
     if not daily_stats:
+        _emit(
+            logger,
+            "scanner_diagnostics",
+            data_source=data_source,
+            trade_date=trade_date.isoformat(),
+            universe_count=len(universe_symbols),
+            daily_count=0,
+            open_count=0,
+            missing_open_count=0,
+            liquid_price_count=0,
+            gap_ge_2_count=0,
+            raw_candidate_count=0,
+            candidate_count=0,
+        )
         return []
 
     if data_source == "alpaca":
@@ -588,9 +602,25 @@ def scan_gap_candidates(
             logger=logger,
         )
     if not open_stats:
+        _emit(
+            logger,
+            "scanner_diagnostics",
+            data_source=data_source,
+            trade_date=trade_date.isoformat(),
+            universe_count=len(universe_symbols),
+            daily_count=len(daily_stats),
+            open_count=0,
+            missing_open_count=len(daily_stats),
+            liquid_price_count=0,
+            gap_ge_2_count=0,
+            raw_candidate_count=0,
+            candidate_count=0,
+        )
         return []
 
     raw_candidates: List[tuple[str, float, float, float, float, float, float]] = []
+    liquid_price_count = 0
+    gap_ge_2_count = 0
     for symbol, dstat in daily_stats.items():
         ostat = open_stats.get(symbol)
         if ostat is None:
@@ -602,7 +632,10 @@ def scan_gap_candidates(
         open_price = float(ostat.open_price)
         if open_price < universe.min_price or open_price > universe.max_price:
             continue
+        liquid_price_count += 1
         gap_pct = (open_price - dstat.prev_close) / dstat.prev_close * 100.0
+        if gap_pct >= 2.0:
+            gap_ge_2_count += 1
         if gap_pct < settings.min_gap_pct or gap_pct > settings.max_gap_pct:
             continue
         bars_in_window = max(1, min(5, ostat.bars_in_window))
@@ -623,6 +656,20 @@ def scan_gap_candidates(
             )
         )
     if not raw_candidates:
+        _emit(
+            logger,
+            "scanner_diagnostics",
+            data_source=data_source,
+            trade_date=trade_date.isoformat(),
+            universe_count=len(universe_symbols),
+            daily_count=len(daily_stats),
+            open_count=len(open_stats),
+            missing_open_count=max(len(daily_stats) - len(open_stats), 0),
+            liquid_price_count=liquid_price_count,
+            gap_ge_2_count=gap_ge_2_count,
+            raw_candidate_count=0,
+            candidate_count=0,
+        )
         return []
 
     symbols_for_caps = [row[0] for row in raw_candidates]
@@ -675,4 +722,19 @@ def scan_gap_candidates(
         )
 
     candidates.sort(key=lambda item: (item.volume_pace_ratio, item.gap_pct), reverse=True)
-    return candidates[: settings.max_scan_candidates]
+    limited_candidates = candidates[: settings.max_scan_candidates]
+    _emit(
+        logger,
+        "scanner_diagnostics",
+        data_source=data_source,
+        trade_date=trade_date.isoformat(),
+        universe_count=len(universe_symbols),
+        daily_count=len(daily_stats),
+        open_count=len(open_stats),
+        missing_open_count=max(len(daily_stats) - len(open_stats), 0),
+        liquid_price_count=liquid_price_count,
+        gap_ge_2_count=gap_ge_2_count,
+        raw_candidate_count=len(raw_candidates),
+        candidate_count=len(limited_candidates),
+    )
+    return limited_candidates

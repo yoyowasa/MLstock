@@ -119,7 +119,9 @@ def _preflight_iex_bars(cfg, data_client: AlpacaClient, logger) -> None:
             count = len(bars)
         else:
             count = 0
-        log_event(logger, "preflight_iex_bars", feed=cfg.bars.feed, symbol="SPY", bars=count)
+        level = "WARNING" if count == 0 else "INFO"
+        message = "preflight_iex_bars_warning" if count == 0 else "preflight_iex_bars"
+        log_event(logger, message, level=level, feed=cfg.bars.feed, symbol="SPY", bars=count)
     except Exception as exc:
         log_event(logger, "preflight_iex_bars_failed", error=str(exc), feed=cfg.bars.feed)
 
@@ -253,7 +255,7 @@ def main() -> None:
     log_event(logger, "order_broker_selected", broker=broker_name, live=args.live)
 
     now_local = datetime.now(tz)
-    scan_at = _stage_datetime(now_local, 9, 30, 5)
+    scan_at = _stage_datetime(now_local, 9, 30, 20)
     options_at = _stage_datetime(now_local, 9, 30, 30)
     trader_at = _stage_datetime(now_local, 9, 35, 0)
 
