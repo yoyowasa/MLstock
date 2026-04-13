@@ -4,7 +4,10 @@
 
 ## 現在の状態: Gap戦略 Stage 2a 稼働中（毎日 9:30 ET 自動スキャン）
 
----
+PLOT
+C:\BOT\MLStock\.venv\Scripts\python.exe C:\BOT\MLStock\scripts\plot_gap_forward_dashboard.py --latest 30
+
+PLOT
 
 ## Gap戦略モジュール
 
@@ -299,3 +302,5 @@ universe:
 - 2026-04-10: gap の scan 開始待機を 09:30:05 ET から 09:30:20 ET に変更した。影響: 寄り直後の 1 分足確定遅延による preflight 偽陰性を減らしつつ、scanner 本体は同じ営業日の寄り後データを使う。
 - 2026-04-10: `src\\mlstock\\jobs\\gap_scanner.py` に `scanner_diagnostics` ログを追加した。`universe_count`, `daily_count`, `open_count`, `missing_open_count`, `liquid_price_count`, `gap_ge_2_count`, `raw_candidate_count`, `candidate_count` を日次で記録する。影響: `count=0` の原因を相場要因と取得品質要因に分けて継続監視できる。
 - 2026-04-10: `scripts\\summarize_gap_logs.py` を拡張し、`scanner_diagnostics` をサマリ出力に含めるようにした。影響: 直近ログをまとめて見るだけで `open_count` や `missing_open_count` の日次ばらつきを追跡できる。既存の古いログには `scanner_diagnostics` が無いため空で表示される。
+- 2026-04-13: `scripts\\plot_gap_forward_dashboard.py` を追加し、dry-run の forward 実績を 1 回の実行で可視化できるようにした。出力先は `artifacts\\forward_plots\\gap_dry_forward` に固定し、`gap_dry_forward_dashboard.png`, `gap_dry_forward_sessions.csv`, `gap_dry_forward_trades.csv`, `PLOT_GUIDE.md` をまとめて生成する。影響: 戦績、候補供給、取得品質を 1 箇所で継続観測できる。
+- 2026-04-13: 可視化依存として `matplotlib` を `pyproject.toml` と `requirements.txt` に追加した。影響: ローカル `.venv` で dry-run ログから PNG ダッシュボードを直接生成できる。
