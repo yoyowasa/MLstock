@@ -59,7 +59,7 @@ def build_log_path(
     timestamp = ts or datetime.now(timezone.utc)
     log_dir = artifacts_dir(cfg, root) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{job_name}_{timestamp:%Y%m%d_%H%M%S}.jsonl"
+    filename = f"{job_name}_{timestamp:%Y%m%d_%H%M%S_%f}.jsonl"
     return log_dir / filename
 
 

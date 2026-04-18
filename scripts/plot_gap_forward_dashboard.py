@@ -4,7 +4,7 @@ import argparse
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -21,8 +21,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--latest",
         type=int,
-        default=30,
-        help="Number of most recent dry-run logs to include",
+        default=None,
+        help="Number of most recent dry-run logs to include. Omit to include all dry-run logs.",
     )
     parser.add_argument(
         "--output-dir",
@@ -49,6 +49,29 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _mode_tuple(payload: Dict[str, Any]) -> Tuple[bool, bool, bool]:
+    return (
+        bool(payload.get("scan_only")),
+        bool(payload.get("skip_options")),
+        bool(payload.get("live")),
+    )
+
+
+def _is_scheduled_forward_session(session: Dict[str, Any]) -> bool:
+    if session["scan_only"] is not False:
+        return False
+    if session["live"] is not False:
+        return False
+    if session["replay_mode"]:
+        return False
+    if session.get("trade_date"):
+        return True
+    session_utc = pd.to_datetime(session.get("session_utc"), utc=True, errors="coerce")
+    if pd.isna(session_utc):
+        return False
+    return session_utc.hour in {13, 14} and session_utc.minute <= 5
 
 
 def _load_session(path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -78,8 +101,15 @@ def _load_session(path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         "gap_ge_2_count": 0,
         "raw_candidate_count": 0,
         "candidate_count": 0,
+        "start_count": 0,
+        "mode_collision": 0,
+        "status": "",
+        "replay_mode": 0,
     }
     trades: List[Dict[str, Any]] = []
+    start_modes: List[Tuple[bool, bool, bool]] = []
+    stop_messages: List[str] = []
+    completed = False
 
     with path.open("r", encoding="utf-8") as handle:
         for raw in handle:
@@ -91,9 +121,7 @@ def _load_session(path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
             if session["session_utc"] is None and isinstance(payload.get("ts_utc"), str):
                 session["session_utc"] = payload["ts_utc"]
             if message == "start":
-                session["scan_only"] = bool(payload.get("scan_only"))
-                session["skip_options"] = bool(payload.get("skip_options"))
-                session["live"] = bool(payload.get("live"))
+                start_modes.append(_mode_tuple(payload))
             elif message == "preflight_iex_bars":
                 session["preflight_bars"] = _safe_int(payload.get("bars"))
             elif message == "preflight_iex_bars_warning":
@@ -141,24 +169,35 @@ def _load_session(path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
                 session["realized_pnl_pct"] = _safe_float(payload.get("realized_pnl_pct"))
                 open_positions = payload.get("open_positions", [])
                 session["open_positions_count"] = len(open_positions) if isinstance(open_positions, list) else 0
+                completed = True
+            elif message in {"scan_replay_requested", "scan_replay_complete"}:
+                session["replay_mode"] = 1
+            elif message == "complete":
+                completed = True
             elif isinstance(message, str) and message.startswith("stop_"):
-                session["stop_reason"] = message
+                stop_messages.append(message)
+
+    if start_modes:
+        session["scan_only"], session["skip_options"], session["live"] = start_modes[-1]
+        session["start_count"] = len(start_modes)
+        session["mode_collision"] = int(len(set(start_modes)) > 1)
+    session["status"] = "complete" if completed else (stop_messages[-1] if stop_messages else "")
+    if not completed and stop_messages:
+        session["stop_reason"] = stop_messages[-1]
 
     return session, trades
 
 
-def _load_dry_run_data(log_dir: Path, latest: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def _load_dry_run_data(log_dir: Path, latest: Optional[int]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     sessions: List[Dict[str, Any]] = []
     trades: List[Dict[str, Any]] = []
     for path in _iter_gap_logs(log_dir):
         session, trade_rows = _load_session(path)
-        if session["scan_only"] is not False:
-            continue
-        if session["live"] is not False:
+        if not _is_scheduled_forward_session(session):
             continue
         sessions.append(session)
         trades.extend(trade_rows)
-        if len(sessions) >= max(latest, 1):
+        if latest is not None and len(sessions) >= max(latest, 1):
             break
 
     sessions_df = pd.DataFrame(sessions)

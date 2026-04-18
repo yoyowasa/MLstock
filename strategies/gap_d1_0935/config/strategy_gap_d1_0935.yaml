@@ -1,0 +1,25 @@
+universe:
+  min_close: 3.0
+  max_close: 80.0
+  min_avg_volume_20: 100000
+  min_avg_dollar_volume_20: 500000
+  min_market_cap: 50000000
+  max_market_cap: 30000000000
+
+d1:
+  min_prev_gap_pct: 2.0
+  min_rel_vol_prev: 2.0
+  min_close_in_range_prev: 0.70
+  min_oc_ret_prev: 0.000001
+  lookback_days: 20
+
+day0:
+  min_gap_today_pct: 0.5
+  min_first5_range_pos: 0.50
+  min_first5_pace: 1.2
+  min_first5_oc_ret: -0.001
+  min_close_vs_vwap_ratio: 0.998
+  decision_time_et: '09:35:05'
+
+risk:
+  risk_per_trade_usd: 50.0

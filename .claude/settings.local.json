@@ -3,7 +3,12 @@
     "allow": [
       "Bash(python3 -c \"import sys,json; [print\\(f''''  count={d[count]} symbols={d[symbols]}''''\\) for line in sys.stdin for d in [json.loads\\(line\\)] if d.get\\(''''message''''\\)==''''scanner_complete'''']\")",
       "Bash(done)",
-      "Bash(.venv/Scripts/python.exe -c \":*)"
+      "Bash(.venv/Scripts/python.exe -c \":*)",
+      "Bash(.venv/Scripts/python.exe scripts/summarize_gap_logs.py)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/python.exe scripts/summarize_gap_logs.py --latest 60)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('scan_only'\\), d.get\\('skip_options'\\), d.get\\('live'\\), d.get\\('message'\\)\\)\")",
+      "Bash(xargs grep *)"
     ]
   }
 }

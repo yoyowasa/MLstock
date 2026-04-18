@@ -1,0 +1,3 @@
+branch_label,count,avg_day_oc_ret,win_rate,avg_intraday_high_ret_from_open,avg_intraday_low_ret_from_open
+continuation_branch,5,-2.082872272547314,0.4,4.268609271846409,-3.7834127897263983
+reclaim_branch,17,0.4209306371098763,0.5882352941176471,4.622155028218619,-4.83396012050797

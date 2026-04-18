@@ -1,13 +1,25 @@
 # MLStock Project Status
 
-## 最終更新: 2026-04-02
+## 最終更新: 2026-04-18
 
-## 現在の状態: Gap戦略 Stage 2a 稼働中（毎日 9:30 ET 自動スキャン）
+## 現在の状態: Gap戦略 観測基盤整理中（SCAN_ONLY + DRY_RUN --skip-options 並走）
 
-PLOT
-C:\BOT\MLStock\.venv\Scripts\python.exe C:\BOT\MLStock\scripts\plot_gap_forward_dashboard.py --latest 30
+### 現在の並走モード
+- `SCAN_ONLY`
+- `DRY_RUN --skip-options`
+- `LIVE = 0`
 
-PLOT
+### 集計既知値
+- raw log: `68 files`（2026-03-02〜2026-04-17）
+- dry-run sessions: `9`
+- entry: `1`
+- closed trades: `1`
+- realized PnL: `-52.185 USD`
+
+### 可視化コマンド
+```powershell
+C:\BOT\MLStock\.venv\Scripts\python.exe C:\BOT\MLStock\scripts\plot_gap_forward_dashboard.py
+```
 
 ## Gap戦略モジュール
 
@@ -26,10 +38,10 @@ MLStock週次システムとは独立。Alpaca IEX接続のみ共有。
         ↓
   run_gap_trade.py --scan-only
         ↓
-  _wait_until(ZoneInfo("America/New_York"), 09:30:05)
+  _wait_until(ZoneInfo("America/New_York"), 09:30:20)
   ※ EST: 23:30 JST まで待機 / EDT(3/8以降): 22:30 JST まで待機（自動）
         ↓
-[9:30:05 ET] ─────────────────────────────────
+[9:30:20 ET] ─────────────────────────────────
   STEP 1: gap_scanner.py  ← 現在稼働中
         ↓
   STEP 2: options_filter.py  ← Stage 4 から有効化
@@ -214,6 +226,17 @@ universe:
 - 2026-04-02: `tests/test_deadband_golden_metrics.py` の baseline を現行スナップショットに合わせて緩和した。deadband の `raw_minus_off return_pct` は「改善必須」ではなく「非悪化」を基準に変更した。現行データでは deadband 効果が 0 に収束しており、golden を固定改善幅で縛ると pre-push が不安定になるため。
 - 2026-04-02: `tools/audit.ps1` の Python 解決を修正した。従来は `C:\BOT\MLStock\.venv\Scripts\python.exe` 固定で、GitHub Actions の `actions/setup-python` 環境では `VENV_PYTHON_NOT_FOUND` で即失敗していた。`.venv` が無い場合は `python`、次に `py` を解決して使うようにし、ローカルと CI の両方で同じ audit を通せるようにした。
 - 2026-04-02: CI の `python -m black --check .` 失敗に対応し、black が指摘した 17 ファイルを整形した。対象は gap 実装、broker 層、補助分析スクリプト、関連テストで、機能変更は伴わず書式のみを統一した。
+- 2026-04-19: `strategies/gap_d1_0935` 側で D 当日 9:35 判定の `missing_first5` 内訳ログを追加した。`open_exists`, `minute_bars_in_0930_0935`, `first5_constructible`, `missing_reason`, `remarks` を raw CSV 化し、`phase1_missing_first5_detail_*`, `phase1_missing_first5_daily_*`, `phase1_missing_first5_symbol_*` を新設した。
+- 2026-04-19: `gap_d1_0935` v1.3 を再集計した。D-1 条件は v1.2 維持、D 当日側のみ `first5_range_pos 0.60->0.50`, `close_5m >= vwap -> close_5m >= vwap*0.998` に緩和。結果は `avg_watchlist_count=1.277`, `avg_candidate_0935_count=0.062`, `scan_zero_days=62` で据え置き、`scan_range_fail_count 17->15`, `scan_vwap_fail_count 18->14` のみ改善、pass は 4件のままだった。
+- 2026-04-19: `gap_d1_0935` の `missing_first5` は 2026-01-14〜2026-04-17 で 50件、全件 `AXL` の `no_minute_bars`。`partial_minute_bars`, `late_open_or_halt`, `symbol_issue`, `unknown` は 0 件で、主ボトルネックはルール閾値よりも特定銘柄の minute 取得欠損に寄っている。
+- 2026-04-19: `gap_d1_0935` v1.4 を再集計した。変更は `gap_today_pct >= 1.0 -> 0.5` のみ。結果は `avg_candidate_0935_count 0.062->0.077`, `scan_zero_days 62->61`, `scan_gap_fail_count 23->20` と改善し、pass は `2026-01-22 ALM` が追加されて 5件になった。
+- 2026-04-19: `gap_d1_0935` の `AXL` 一時除外比較では `missing_first5_count 50->0` だが、`avg_candidate_0935_count=0.077`, `scan_zero_days=61` は不変。`AXL` は watchlist 母数を押し上げるだけで、候補通過数には寄与していない。
+- 2026-04-19: `gap_d1_0935` v1.5 を再集計した。変更は `first5_pace >= 1.5 -> 1.2` のみ。`scan_pace_fail_count 12->10` には改善したが、`avg_candidate_0935_count=0.077`, `scan_zero_days=61`, pass 5件は v1.4 と同値だった。
+- 2026-04-19: `gap_d1_0935` v1.5 の fail overlap は `gap_only_fail=7`, `gap+pace_fail=1`, `gap+oc_ret_fail=2`, `pace_only_fail=2`, `oc_ret_only_fail=0`。`pace` 緩和の効果は限定的で、主ボトルネックは `gap_fail` 単独と `oc_ret` 側へ寄った。
+- 2026-04-19: `gap_d1_0935` v1.6 を再集計した。変更は `first5_oc_ret >= -0.001` のみで、実装側の判定も `>=` に統一した。`scan_oc_ret_fail_count 15->14` には改善したが、`avg_candidate_0935_count=0.077`, `scan_zero_days=61`, pass 5件は v1.5 と同値だった。
+- 2026-04-19: `gap_d1_0935` v1.6 の `gap_only_fail=7` の `gap_today_pct` は、指定帯で `0.0〜0.5%=1`, `0.5〜1.0%=0`, `1.0%以上=0`。残り 6件は `gap_today_pct < 0.0` で、次の主ボトルネックは「微弱ギャップ」よりも「前日終値割れ寄り」の扱いと判明した。
+- 2026-04-19: `gap_d1_0935` に D 当日寄りレジーム分析を追加した。`analysis_regime.py` / `scripts/analyze_gap_d1_regime.py` で D-1 watchlist 銘柄を `regime_a_open_above_prev_close` / `regime_b_open_at_or_below_prev_close` に分類し、日中成績と branch 比較 CSV を出力できるようにした。
+- 2026-04-19: 2026-01-14〜2026-04-17 の regime 分析では `regime_a=16`, `regime_b=17`。`regime_a` は `avg_day_oc_ret=-0.577%`, `win_rate=31.3%`, continuation pass 5件、`regime_b` は `avg_day_oc_ret=+0.421%`, `win_rate=58.8%`, reclaim branch 17件だった。continuation 単線より reclaim/reversal 系 branch の試作優先度が上がった。
 
 ### 次のアクション（Gap戦略）
 - 毎朝のスキャンログ確認（1日平均何銘柄が通過するか把握）
@@ -304,3 +327,173 @@ universe:
 - 2026-04-10: `scripts\\summarize_gap_logs.py` を拡張し、`scanner_diagnostics` をサマリ出力に含めるようにした。影響: 直近ログをまとめて見るだけで `open_count` や `missing_open_count` の日次ばらつきを追跡できる。既存の古いログには `scanner_diagnostics` が無いため空で表示される。
 - 2026-04-13: `scripts\\plot_gap_forward_dashboard.py` を追加し、dry-run の forward 実績を 1 回の実行で可視化できるようにした。出力先は `artifacts\\forward_plots\\gap_dry_forward` に固定し、`gap_dry_forward_dashboard.png`, `gap_dry_forward_sessions.csv`, `gap_dry_forward_trades.csv`, `PLOT_GUIDE.md` をまとめて生成する。影響: 戦績、候補供給、取得品質を 1 箇所で継続観測できる。
 - 2026-04-13: 可視化依存として `matplotlib` を `pyproject.toml` と `requirements.txt` に追加した。影響: ローカル `.venv` で dry-run ログから PNG ダッシュボードを直接生成できる。
+
+---
+
+### 2026-04-18: missing_open 要因分析 (probe_universe_coverage.py)
+
+**目的**: `scanner_diagnostics.missing_open_count ≈ 1540/1994` の主因を「IEX coverage 不足」と「seed universe 構成問題」に分離・定量化した。
+
+**調査手法**: `scripts/probe_universe_coverage.py --probe-date 2026-04-17 --feed iex` で seed 2000銘柄の Alpaca IEX daily bar / 1-min window (9:30-9:35 ET) 取得可否を全件実測した。出力: `artifacts/coverage/universe_coverage_2026-04-17.csv`。
+
+**universe 構成 (seed 2000銘柄)**:
+
+| タイプ | 件数 | 割合 |
+|-------|-----|------|
+| common (普通株相当) | 1,411 | 70.5% |
+| ETF | 254 | 12.7% |
+| preferred (優先株) | 147 | 7.3% |
+| warrant (ワラント) | 141 | 7.0% |
+| right (権利) | 33 | 1.7% |
+| unknown (Alpaca未登録) | 13 | 0.7% |
+| unit | 1 | 0.1% |
+
+- 非標準銘柄合計: 335/2000 = 16.8%
+- Exchange: NASDAQ 1241 / NYSE 740 / UNKNOWN 19
+
+**IEX 1-min window 取得率 (2026-04-17 実測)**:
+
+| タイプ | daily_bar | open_1m | open_1m% |
+|-------|----------|---------|---------|
+| common | 1,365 | 677 | **49.6%** |
+| ETF | 249 | 52 | 20.9% |
+| warrant | 122 | 13 | 10.7% |
+| preferred | 142 | 5 | 3.5% |
+| right | 31 | 6 | 19.4% |
+| **TOTAL** | **1,912** | **754** | **39.4%** |
+
+- NYSE common: 323/536 = **60.3%**
+- NASDAQ common: 354/829 = **42.7%**（NYSE より低い）
+
+**probe 値 vs 診断値の乖離**:
+
+- probe (post-market, full 9:30-9:35): **754**
+- 診断値 (9:30:20 ET live scan): **454**
+- 差分: +300 → スキャン開始時刻 9:30:20 ET では第1バー未確定のため追加で約 300 件を逃している
+
+**missing_open の3要因分解 (診断値ベース: missing=1540)**:
+
+| 要因 | 件数 | 割合 | 内容 |
+|-----|-----|------|-----|
+| A. 非標準銘柄 | ~310 | 20.1% | warrant/preferred/right が daily_bar あるが open_1m なし |
+| B. timing gap | ~300 | 19.5% | 9:30:20 ET 時点で第1バー (9:30-9:31) 未確定 |
+| C. IEX feed 構造欠損 | ~930 | 60.4% | common/ETF でも IEX quote がない → 代替データ源が必要 |
+
+**除外しても open_count が増えない候補**:
+
+- warrant 141銘柄を除外 → open_count -13（1.7%減少）、missing -109 削減
+- preferred 147銘柄を除外 → open_count -5（0.7%減少）、missing -137 削減
+- right 33銘柄を除外 → open_count -6（0.8%減少）、missing -25 削減
+- → 非標準銘柄除外は「universe のノイズ削減」であり open_count 改善は軽微
+
+**主結論**:
+
+1. missing_open の主因は **IEX feed の構造的 coverage 不足 (60.4%)**。common 株でも 50.4% が未取得。universe 整理だけでは解決しない。
+2. 非標準銘柄除外による改善は **上限 20.1%**、open_count の実増加は +25 程度に留まる。
+3. 9:30:20 ET timing gap が **19.5%** を説明。9:31 以降にクエリすれば回収可能だが、strategy timing の変更を伴う。
+
+**未確定点**:
+
+- 非標準銘柄の精度: suffix ルール + name ベースの分類（誤分類あり得る）。yfinance quoteType での全件検証は未実施。
+- timing gap の 300 件は 1日の実測値。日によってバラつき得る（相場活況度で変化）。
+- IEX feed → SIP feed 切替時の open_count 増加量は未実測。
+
+**次の改善候補**:
+
+| 優先 | 内容 | 期待効果 |
+|-----|------|---------|
+| 1 | `config.yaml: feed: sip` に変更 | common 株の open_1m 取得率を大幅改善（上限 100%） |
+| 2 | scan 開始を 9:31:00 ET 以降に遅らせる | +300 件（ただし strategy タイミング変更） |
+| 3 | universe から warrant/preferred/right を除外 | missing 減少 -271 件、open_count は -24 のみ |
+| 4 | ETF を除外し common のみに絞る | open_1m rate 49.6%（ETF 20.9% より高い） |
+
+判断: **最優先は feed=sip の評価**。SIP feed で common 株の取得率がどこまで上がるか probe_universe_coverage.py を `--feed sip` で再実行して確認する。
+
+---
+
+### 2026-04-18: SIP probe + timing gap 定量化
+
+**調査手法**: `probe_universe_coverage.py --probe-date 2026-04-17 --feed sip` で SIP 実測。timing 4パターンは IEX/SIP それぞれ 9:30:20 / 9:31:05 / 9:31:20 / 9:32:05 / 9:35:00 ET で Alpaca API を直接叩いて open_1m 件数を計測。
+
+**IEX vs SIP open_1m 件数比較 (2026-04-17, seed 2000銘柄)**:
+
+| タイプ | IEX daily | IEX open_1m | IEX% | SIP daily | SIP open_1m | SIP% |
+|-------|---------|-----------|------|---------|-----------|------|
+| common | 1,365 | 677 | 49.6% | 1,371 | 1,215 | 88.6% |
+| ETF | 249 | 52 | 20.9% | 250 | 181 | 72.4% |
+| warrant | 122 | 13 | 10.7% | 125 | 47 | 37.6% |
+| preferred | 142 | 5 | 3.5% | 142 | 84 | 59.2% |
+| right | 31 | 6 | 19.4% | 31 | 11 | 35.5% |
+| **TOTAL** | **1,912** | **754** | **39.4%** | **1,922** | **1,539** | **80.1%** |
+
+- Exchange 別 SIP: NYSE 630/740=85.1%, NASDAQ 908/1241=73.2%
+
+**scan timing × feed の open_count 実測 (2026-04-17, seed 2000銘柄)**:
+
+| scan 開始時刻 | IEX | SIP | IEX増分 | SIP増分 |
+|-------------|-----|-----|--------|--------|
+| 9:30:20 (現状) | **454** | **1,466** | — | — |
+| 9:31:05 | 572 | 1,487 | +118 | +21 |
+| 9:31:20 | 572 | 1,487 | +118 | +21 |
+| 9:32:05 | 628 | 1,497 | +174 | +31 |
+| 9:35:00 (full) | 754 | 1,539 | +300 | +73 |
+
+- SIP は 9:30:20 時点で既に full window の 95.3% を取得（timing 感度が低い）
+- IEX は 9:30:20 で full の 60.2% にすぎず、9:31 移行で +26% 回収可能
+
+**clean universe 試算 (common+ETF のみ、SIP)**:
+
+| | full (2000) | clean (1665) | 差分 |
+|-|------------|-------------|-----|
+| daily_bar | 1,922 | 1,621 | -301 |
+| open_1m | 1,539 | 1,396 | -143 |
+| open_1m rate | 80.1% | 86.1% | +6.0pt |
+
+- 非標準銘柄除外で open_1m rate は +6pt 改善するが、絶対件数は -143 減少
+- SIP で除外対象の warrant/preferred/right も相当数 open_1m あり（47+84+11=142件）
+- これらが gap 候補になることがある（ノイズ増加リスク）
+
+**スキャン候補数への影響推定 (4/17 diagnostics ベース、SIP 線形試算)**:
+
+| 指標 | IEX 実測 | SIP 推定 | 倍率 |
+|-----|---------|---------|-----|
+| open_count (9:30:20) | 454 | 1,466 | **3.23×** |
+| liquid_price_count | 159 | ~513 | ~3.23× |
+| gap_ge_2_count | 51 | ~164 | ~3.23× |
+| raw_candidate_count | 8 | ~26 | ~3.23× |
+
+注: 線形スケールは仮定。実際の候補倍率はギャップ銘柄の IEX/SIP 分布に依存し未確定。
+
+**主結論**:
+
+1. **feed=sip への変更が支配的改善手段**。SIP 9:30:20 (1466) は IEX 9:35:00 (754) の約2倍。timing を最大遅延しても IEX は SIP の 9:30:20 に届かない。
+2. **timing 変更 (9:30:20→9:31:05) の効果は IEX では +118、SIP では +21 と小さい**。SIP に切り替えれば timing 変更の必要性は大幅低下する。
+3. **clean universe 化の効果は coverage 改善ではなく候補品質改善**。SIP でも warrant/preferred が open_1m を持ち gap 候補になりうるため、除外は別途判断が必要。
+
+**推奨アクション: feed=sip に変更し 1 週間のスキャンデータを収集する**
+
+変更箇所: `config/config.yaml: bars.feed: iex → sip`  
+確認事項: Alpaca アカウントの SIP アクセス権限（有料プランが必要な場合あり）  
+期待効果: open_count 454→1466 (3.2×), raw_candidate 8→~26 (推定)  
+リスク: SIP feed が課金対象の場合、コスト増加。feed 切替後に warrant/preferred の偽候補が増える可能性あり。
+
+**未確定点**:
+
+- Alpaca SIP feed の利用権限（現アカウントが free tier かどうか未確認）
+- SIP 切替後の実 raw_candidate 倍率（線形スケール仮定は未検証）
+- timing gap 300 件の日次バラつき（1日実測値）
+- warrant/preferred が SIP で open_1m を持つ場合の偽候補増加リスク
+- 2026-04-18: `scripts\\summarize_gap_logs.py` の既定 `--latest=5` が「最近3日しか見えない」誤解を生んでいたため、既定を全件集計に変更した。`session_utc`, `trade_date`, `scan_only`, `skip_options`, `live`, `status`, `start_count`, `mode_collision`, `replay_mode` を出すようにし、表示順も `trade_date/session_utc` 基準に直した。
+- 2026-04-18: `scripts\\plot_gap_forward_dashboard.py` の既定対象件数を全 dry-run に変更し、`scan_replay_*` を forward 集計から除外するようにした。さらに `session_utc` の時刻帯で定期 dry-run 相当の run に寄せ、`gap_dry_forward_sessions.csv` と `gap_dry_forward_trades.csv` を raw jsonl から再生成した。再生成後の既知値は `9 sessions / 1 trade / -52.185 USD`。
+- 2026-04-18: `gap_trade_20260415_130048.jsonl` の `scan_only / skip_options` 誤記は、同一秒に scan-only と dry-run が同じ filename へ書き込み、1 file に 2 start が衝突したことが原因と確認した。`src\\mlstock\\logging\\logger.py` の log filename をマイクロ秒付きに変更し、再発を防止した。既存の 2026-04-15 ログは一次情報として保持しつつ、再生成 CSV では `start_count=2`, `mode_collision=true`, `status=complete` として扱う。
+
+- 2026-04-18: `src\\mlstock\\jobs\\gap_scanner.py` の `scanner_diagnostics` を拡張し、`daily_only_count`, `open_missing_count`, `open_zero_bar_count`, `open_no_window_bar_count`, `open_null_field_count`, `open_parse_fail_count`, `open_partial_bar_count`, `open_missing_symbols_sample`, `open_missing_exchange_counts_sample`, `open_missing_quote_type_counts_sample`, `open_missing_market_cap_bucket_counts_sample`, `price_filter_drop_count`, `gap_filter_drop_count`, `pace_filter_drop_count`, `market_cap_drop_count`, `final_candidate_count` を raw log に出すようにした。影響: open 欠損が「当日最初の1分足未返却」なのか parse/null 欠損なのかを日次ログだけで切り分けられる。
+- 2026-04-18: open 判定経路を整理した。current gap scanner の open は Alpaca の日足 open ではなく、`09:30-09:35 ET` 窓の最初の 1 分足 `o` を使う。`open_source=alpaca_first_1min_bar_0930_0935` を diagnostics に追加した。影響: daily bar はあるが first 1-min bar が無いケースを `missing_open` として追跡できる。
+- 2026-04-18: 直近5営業日 (2026-04-13〜2026-04-17) を再診断した。`universe_count=2000`, `daily_count=1994` に対し `open_count=402/403/420/439/454`, `open_missing_count=1592/1591/1574/1555/1540` で、missing_open のほぼ全量が `open_zero_bar_count` だった。`open_no_window_bar_count`, `open_null_field_count`, `open_parse_fail_count`, `open_partial_bar_count` は 5 営業日とも 0。影響: 現時点の主因は parse/null 欠損ではなく、対象銘柄で `09:30-09:35` の 1 分足が 0 本返る段階に寄っている。
+- 2026-04-18: missing_open sample の暫定属性確認では、`A`, `AACB`, `AACBR`, `AACBU`, `AACG`, `AADR`, `AAEQ`, `AALG`, `AAM`, `AAM.U` などが継続して現れた。quote type sample は `EQUITY` と `ETF` が混在し、market cap sample も `lt_300m`, `gte_2b`, `unknown` が混在した。exchange sample は `client.get_asset()` 由来の `unknown` が多く、銘柄種別偏りの断定には未到達。
+- 2026-04-19: `C:\BOT\MLStock\docs\strategy_gap_d1_0935_v1.md` を新規追加した。既存 gap 本線を維持したまま、D-1 watchlist + 当日 9:35 continuation 確認の別系統仕様を文書化した。影響: 旧 broad minute scan 系と切り分けて、新系統の実装対象・非対象・フェーズ分割・受け入れ条件を参照できる。
+- 2026-04-19: `C:\BOT\MLStock\strategies\gap_d1_0935` を新規作成し、別戦略の専用受け皿として `docs`, `src`, `scripts`, `artifacts` を切った。仕様書は `C:\BOT\MLStock\strategies\gap_d1_0935\docs\strategy_gap_d1_0935_v1.md` へ移動した。影響: 既存 gap 本線と新系統の実装資産を分離して進められる。
+- 2026-04-19: 別戦略 `strategies\\gap_d1_0935` の Phase 1 実装を追加した。`strategies\\gap_d1_0935\\src\\gap_d1_0935` に D-1 watchlist builder、当日 9:35 scanner、replay、old 比較を実装し、strategy 専用 scripts / config / STATUS を作成した。影響: 既存 gap 本線とコード・出力・状態管理を分離したまま、新系統を並行実装できる。
+- 2026-04-19: `strategies\\gap_d1_0935` に Phase 1 母数確認スクリプトを追加した。`analysis_phase1.py` / `analyze_phase1_population.py` で直近3か月の watchlist 件数、9:35 件数、drop counts、銘柄別理由、old broad gap との差分を `strategies\\gap_d1_0935\\artifacts\\reports` に出力する。結果は 65 営業日で `watchlist 1件 / 9:35 candidates 0件` と極端に少なく、主因は D-1 側の `price_fail` と `liquidity_fail`。
+- 2026-04-19: 別戦略 `strategies\\gap_d1_0935` を v1.1 条件へ緩和して再集計した。結果は 65 営業日で `watchlist_count 1->18`, `candidate_0935_count 0->2`。通過日は `2026-03-18 BTSG`, `2026-04-01 ALKS`。依然として old broad gap scanner との共通候補は 0 で、D-1 側の主な詰まりは `liquidity_fail`, `price_fail`, `gap_fail`。
+- 2026-04-19: 別戦略 `strategies\\gap_d1_0935` を v1.2 条件へ緩和して再集計した。結果は 65 営業日で `watchlist_count 18->83`, `candidate_0935_count 2->4`, `watchlist_zero_days 48->6`。一方で `scan_missing_first5 0->50` が増え、次の主ボトルネックは D-1 側より当日 9:35 判定側に移った。

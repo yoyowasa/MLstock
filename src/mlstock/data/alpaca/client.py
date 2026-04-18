@@ -139,6 +139,9 @@ class AlpacaClient:
         }
         return self._request("GET", endpoints.ASSETS, params=params)
 
+    def get_asset(self, symbol: str) -> Any:
+        return self._request("GET", f"{endpoints.ASSETS}/{symbol}")
+
     def get_calendar(self, start: str, end: str) -> Any:
         params = {
             "start": start,

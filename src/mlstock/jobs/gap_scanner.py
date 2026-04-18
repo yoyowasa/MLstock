@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time as dtime, timedelta
 from typing import Any, Dict, Iterable, List, Mapping, Optional
@@ -63,6 +64,21 @@ class _OpenStats:
     open_price: float
     first_window_volume: float
     bars_in_window: int
+
+
+@dataclass(frozen=True)
+class _OpenStatsDiagnostics:
+    daily_only_count: int
+    open_missing_count: int
+    open_zero_bar_count: int
+    open_no_window_bar_count: int
+    open_null_field_count: int
+    open_parse_fail_count: int
+    open_partial_bar_count: int
+    open_missing_symbols_sample: List[str]
+    open_missing_exchange_counts_sample: Dict[str, int]
+    open_missing_quote_type_counts_sample: Dict[str, int]
+    open_missing_market_cap_bucket_counts_sample: Dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -261,14 +277,31 @@ def _build_open_stats(
     symbols: List[str],
     trade_date_local: date,
     as_of_local: datetime,
-) -> Dict[str, _OpenStats]:
+) -> tuple[Dict[str, _OpenStats], _OpenStatsDiagnostics]:
     tz = ZoneInfo(cfg.project.timezone)
     open_local = datetime.combine(trade_date_local, dtime(9, 30), tzinfo=tz)
     close_local = min(as_of_local, datetime.combine(trade_date_local, dtime(9, 35), tzinfo=tz))
     if close_local <= open_local:
-        return {}
+        return {}, _OpenStatsDiagnostics(
+            daily_only_count=0,
+            open_missing_count=0,
+            open_zero_bar_count=0,
+            open_no_window_bar_count=0,
+            open_null_field_count=0,
+            open_parse_fail_count=0,
+            open_partial_bar_count=0,
+            open_missing_symbols_sample=[],
+            open_missing_exchange_counts_sample={},
+            open_missing_quote_type_counts_sample={},
+            open_missing_market_cap_bucket_counts_sample={},
+        )
 
     stats: Dict[str, _OpenStats] = {}
+    zero_bar_symbols: List[str] = []
+    no_window_symbols: List[str] = []
+    null_field_symbols: List[str] = []
+    parse_fail_symbols: List[str] = []
+    partial_symbols: List[str] = []
     batch_size = max(1, min(200, int(cfg.bars.batch_size)))
     for batch in _chunk(symbols, batch_size):
         response = _fetch_bars_batch(
@@ -284,25 +317,48 @@ def _build_open_stats(
         for symbol in batch:
             items = response.get(symbol, [])
             if not items:
+                zero_bar_symbols.append(symbol)
                 continue
             normalized: List[tuple[datetime, float, float]] = []
+            raw_in_window = 0
+            null_field_in_window = 0
+            parse_fail_in_window = 0
             for item in items:
                 ts_raw = item.get("t")
                 open_raw = item.get("o")
                 volume_raw = item.get("v")
-                if ts_raw is None or open_raw is None or volume_raw is None:
+                if ts_raw is None:
                     continue
-                ts = pd.to_datetime(ts_raw, utc=True).tz_convert(tz).to_pydatetime()
+                try:
+                    ts = pd.to_datetime(ts_raw, utc=True).tz_convert(tz).to_pydatetime()
+                except Exception:
+                    parse_fail_in_window += 1
+                    continue
                 if ts < open_local or ts >= datetime.combine(trade_date_local, dtime(9, 35), tzinfo=tz):
+                    continue
+                raw_in_window += 1
+                if open_raw is None or volume_raw is None:
+                    null_field_in_window += 1
                     continue
                 try:
                     open_price = float(open_raw)
                     volume = float(volume_raw)
                 except (TypeError, ValueError):
+                    parse_fail_in_window += 1
                     continue
                 normalized.append((ts, open_price, volume))
             if not normalized:
+                if raw_in_window == 0:
+                    no_window_symbols.append(symbol)
+                elif null_field_in_window > 0:
+                    null_field_symbols.append(symbol)
+                elif parse_fail_in_window > 0:
+                    parse_fail_symbols.append(symbol)
+                else:
+                    no_window_symbols.append(symbol)
                 continue
+            if raw_in_window > len(normalized):
+                partial_symbols.append(symbol)
             normalized.sort(key=lambda row: row[0])
             open_price = normalized[0][1]
             first_window_volume = sum(row[2] for row in normalized)
@@ -311,7 +367,21 @@ def _build_open_stats(
                 first_window_volume=first_window_volume,
                 bars_in_window=len(normalized),
             )
-    return stats
+    missing_symbols = [symbol for symbol in symbols if symbol not in stats]
+    diagnostics = _OpenStatsDiagnostics(
+        daily_only_count=len(missing_symbols),
+        open_missing_count=len(missing_symbols),
+        open_zero_bar_count=len(zero_bar_symbols),
+        open_no_window_bar_count=len(no_window_symbols),
+        open_null_field_count=len(null_field_symbols),
+        open_parse_fail_count=len(parse_fail_symbols),
+        open_partial_bar_count=len(partial_symbols),
+        open_missing_symbols_sample=missing_symbols[:10],
+        open_missing_exchange_counts_sample=_sample_exchange_counts(client, missing_symbols[:10]),
+        open_missing_quote_type_counts_sample=_sample_quote_type_counts(missing_symbols[:10]),
+        open_missing_market_cap_bucket_counts_sample=_sample_market_cap_bucket_counts(missing_symbols[:10]),
+    )
+    return stats, diagnostics
 
 
 def _build_daily_stats_twelvedata(
@@ -529,6 +599,66 @@ def _fetch_market_caps_m(
     return results
 
 
+def _sample_exchange_counts(client: AlpacaClient, symbols: List[str]) -> Dict[str, int]:
+    counts: Counter[str] = Counter()
+    for symbol in symbols:
+        try:
+            asset = client.get_asset(symbol)
+        except Exception:
+            counts["unknown"] += 1
+            continue
+        exchange = None
+        if isinstance(asset, dict):
+            exchange = asset.get("exchange")
+        label = str(exchange).strip().upper() if exchange is not None else "UNKNOWN"
+        counts[label or "UNKNOWN"] += 1
+    return dict(counts)
+
+
+def _sample_quote_type_counts(symbols: List[str]) -> Dict[str, int]:
+    try:
+        import yfinance as yf
+    except Exception:
+        return {}
+
+    counts: Counter[str] = Counter()
+    for symbol in symbols:
+        try:
+            info = yf.Ticker(symbol).info
+        except Exception:
+            counts["unknown"] += 1
+            continue
+        quote_type = info.get("quoteType") if isinstance(info, dict) else None
+        label = str(quote_type).strip().upper() if quote_type is not None else "UNKNOWN"
+        counts[label or "UNKNOWN"] += 1
+    return dict(counts)
+
+
+def _sample_market_cap_bucket_counts(symbols: List[str]) -> Dict[str, int]:
+    try:
+        import yfinance as yf
+    except Exception:
+        return {}
+
+    counts: Counter[str] = Counter()
+    for symbol in symbols:
+        try:
+            lookup = _extract_market_cap_lookup(yf.Ticker(symbol))
+        except Exception:
+            counts["unknown"] += 1
+            continue
+        market_cap_m = lookup.market_cap_m
+        if market_cap_m is None:
+            counts["unknown"] += 1
+        elif market_cap_m < 300:
+            counts["lt_300m"] += 1
+        elif market_cap_m < 2_000:
+            counts["300m_to_2b"] += 1
+        else:
+            counts["gte_2b"] += 1
+    return dict(counts)
+
+
 def scan_gap_candidates(
     cfg: AppConfig,
     gap_cfg: Mapping[str, Any],
@@ -574,19 +704,37 @@ def scan_gap_candidates(
             "scanner_diagnostics",
             data_source=data_source,
             trade_date=trade_date.isoformat(),
+            open_source=(
+                "alpaca_first_1min_bar_0930_0935" if data_source == "alpaca" else "twelvedata_first_1min_bar_0930_0935"
+            ),
             universe_count=len(universe_symbols),
             daily_count=0,
             open_count=0,
-            missing_open_count=0,
+            daily_only_count=0,
+            open_missing_count=0,
+            open_zero_bar_count=0,
+            open_no_window_bar_count=0,
+            open_null_field_count=0,
+            open_parse_fail_count=0,
+            open_partial_bar_count=0,
+            open_missing_symbols_sample=[],
+            open_missing_exchange_counts_sample={},
+            open_missing_quote_type_counts_sample={},
+            open_missing_market_cap_bucket_counts_sample={},
             liquid_price_count=0,
             gap_ge_2_count=0,
+            price_filter_drop_count=0,
+            gap_filter_drop_count=0,
+            pace_filter_drop_count=0,
+            market_cap_drop_count=0,
             raw_candidate_count=0,
             candidate_count=0,
+            final_candidate_count=0,
         )
         return []
 
     if data_source == "alpaca":
-        open_stats = _build_open_stats(
+        open_stats, open_diag = _build_open_stats(
             client=data_client,
             cfg=cfg,
             symbols=list(daily_stats.keys()),
@@ -601,26 +749,60 @@ def scan_gap_candidates(
             trade_date_local=trade_date,
             logger=logger,
         )
+        open_diag = _OpenStatsDiagnostics(
+            daily_only_count=max(len(daily_stats) - len(open_stats), 0),
+            open_missing_count=max(len(daily_stats) - len(open_stats), 0),
+            open_zero_bar_count=0,
+            open_no_window_bar_count=0,
+            open_null_field_count=0,
+            open_parse_fail_count=0,
+            open_partial_bar_count=0,
+            open_missing_symbols_sample=[],
+            open_missing_exchange_counts_sample={},
+            open_missing_quote_type_counts_sample={},
+            open_missing_market_cap_bucket_counts_sample={},
+        )
     if not open_stats:
         _emit(
             logger,
             "scanner_diagnostics",
             data_source=data_source,
             trade_date=trade_date.isoformat(),
+            open_source=(
+                "alpaca_first_1min_bar_0930_0935" if data_source == "alpaca" else "twelvedata_first_1min_bar_0930_0935"
+            ),
             universe_count=len(universe_symbols),
             daily_count=len(daily_stats),
             open_count=0,
-            missing_open_count=len(daily_stats),
+            daily_only_count=open_diag.daily_only_count,
+            open_missing_count=open_diag.open_missing_count,
+            open_zero_bar_count=open_diag.open_zero_bar_count,
+            open_no_window_bar_count=open_diag.open_no_window_bar_count,
+            open_null_field_count=open_diag.open_null_field_count,
+            open_parse_fail_count=open_diag.open_parse_fail_count,
+            open_partial_bar_count=open_diag.open_partial_bar_count,
+            open_missing_symbols_sample=open_diag.open_missing_symbols_sample,
+            open_missing_exchange_counts_sample=open_diag.open_missing_exchange_counts_sample,
+            open_missing_quote_type_counts_sample=open_diag.open_missing_quote_type_counts_sample,
+            open_missing_market_cap_bucket_counts_sample=open_diag.open_missing_market_cap_bucket_counts_sample,
             liquid_price_count=0,
             gap_ge_2_count=0,
+            price_filter_drop_count=0,
+            gap_filter_drop_count=0,
+            pace_filter_drop_count=0,
+            market_cap_drop_count=0,
             raw_candidate_count=0,
             candidate_count=0,
+            final_candidate_count=0,
         )
         return []
 
     raw_candidates: List[tuple[str, float, float, float, float, float, float]] = []
     liquid_price_count = 0
     gap_ge_2_count = 0
+    price_filter_drop_count = 0
+    gap_filter_drop_count = 0
+    pace_filter_drop_count = 0
     for symbol, dstat in daily_stats.items():
         ostat = open_stats.get(symbol)
         if ostat is None:
@@ -631,17 +813,20 @@ def scan_gap_candidates(
             continue
         open_price = float(ostat.open_price)
         if open_price < universe.min_price or open_price > universe.max_price:
+            price_filter_drop_count += 1
             continue
         liquid_price_count += 1
         gap_pct = (open_price - dstat.prev_close) / dstat.prev_close * 100.0
         if gap_pct >= 2.0:
             gap_ge_2_count += 1
         if gap_pct < settings.min_gap_pct or gap_pct > settings.max_gap_pct:
+            gap_filter_drop_count += 1
             continue
         bars_in_window = max(1, min(5, ostat.bars_in_window))
         daily_volume_pace = float(ostat.first_window_volume) * (390.0 / float(bars_in_window))
         volume_pace_ratio = daily_volume_pace / dstat.avg_volume
         if volume_pace_ratio < settings.min_volume_pace_ratio:
+            pace_filter_drop_count += 1
             continue
         raw_candidates.append(
             (
@@ -661,14 +846,32 @@ def scan_gap_candidates(
             "scanner_diagnostics",
             data_source=data_source,
             trade_date=trade_date.isoformat(),
+            open_source=(
+                "alpaca_first_1min_bar_0930_0935" if data_source == "alpaca" else "twelvedata_first_1min_bar_0930_0935"
+            ),
             universe_count=len(universe_symbols),
             daily_count=len(daily_stats),
             open_count=len(open_stats),
-            missing_open_count=max(len(daily_stats) - len(open_stats), 0),
+            daily_only_count=open_diag.daily_only_count,
+            open_missing_count=open_diag.open_missing_count,
+            open_zero_bar_count=open_diag.open_zero_bar_count,
+            open_no_window_bar_count=open_diag.open_no_window_bar_count,
+            open_null_field_count=open_diag.open_null_field_count,
+            open_parse_fail_count=open_diag.open_parse_fail_count,
+            open_partial_bar_count=open_diag.open_partial_bar_count,
+            open_missing_symbols_sample=open_diag.open_missing_symbols_sample,
+            open_missing_exchange_counts_sample=open_diag.open_missing_exchange_counts_sample,
+            open_missing_quote_type_counts_sample=open_diag.open_missing_quote_type_counts_sample,
+            open_missing_market_cap_bucket_counts_sample=open_diag.open_missing_market_cap_bucket_counts_sample,
             liquid_price_count=liquid_price_count,
             gap_ge_2_count=gap_ge_2_count,
+            price_filter_drop_count=price_filter_drop_count,
+            gap_filter_drop_count=gap_filter_drop_count,
+            pace_filter_drop_count=pace_filter_drop_count,
+            market_cap_drop_count=0,
             raw_candidate_count=0,
             candidate_count=0,
+            final_candidate_count=0,
         )
         return []
 
@@ -681,6 +884,7 @@ def scan_gap_candidates(
 
     market_cap_filter_enabled = settings.market_cap_source == "yfinance" and universe.min_market_cap_m > 0
     candidates: List[GapCandidate] = []
+    market_cap_drop_count = 0
     for row in raw_candidates:
         (
             symbol,
@@ -695,9 +899,11 @@ def scan_gap_candidates(
         market_cap_m = market_caps_m.get(symbol, -1.0)
         if market_cap_filter_enabled:
             if market_cap_m < 0:
+                market_cap_drop_count += 1
                 _emit(logger, "market_cap_filter_drop", symbol=symbol, reason="market_cap_unavailable")
                 continue
             if market_cap_m < universe.min_market_cap_m:
+                market_cap_drop_count += 1
                 _emit(
                     logger,
                     "market_cap_filter_drop",
@@ -728,13 +934,32 @@ def scan_gap_candidates(
         "scanner_diagnostics",
         data_source=data_source,
         trade_date=trade_date.isoformat(),
+        open_source=(
+            "alpaca_first_1min_bar_0930_0935" if data_source == "alpaca" else "twelvedata_first_1min_bar_0930_0935"
+        ),
         universe_count=len(universe_symbols),
         daily_count=len(daily_stats),
         open_count=len(open_stats),
         missing_open_count=max(len(daily_stats) - len(open_stats), 0),
         liquid_price_count=liquid_price_count,
         gap_ge_2_count=gap_ge_2_count,
+        price_filter_drop_count=price_filter_drop_count,
+        gap_filter_drop_count=gap_filter_drop_count,
+        pace_filter_drop_count=pace_filter_drop_count,
+        market_cap_drop_count=market_cap_drop_count,
         raw_candidate_count=len(raw_candidates),
         candidate_count=len(limited_candidates),
+        final_candidate_count=len(limited_candidates),
+        daily_only_count=open_diag.daily_only_count,
+        open_missing_count=open_diag.open_missing_count,
+        open_zero_bar_count=open_diag.open_zero_bar_count,
+        open_no_window_bar_count=open_diag.open_no_window_bar_count,
+        open_null_field_count=open_diag.open_null_field_count,
+        open_parse_fail_count=open_diag.open_parse_fail_count,
+        open_partial_bar_count=open_diag.open_partial_bar_count,
+        open_missing_symbols_sample=open_diag.open_missing_symbols_sample,
+        open_missing_exchange_counts_sample=open_diag.open_missing_exchange_counts_sample,
+        open_missing_quote_type_counts_sample=open_diag.open_missing_quote_type_counts_sample,
+        open_missing_market_cap_bucket_counts_sample=open_diag.open_missing_market_cap_bucket_counts_sample,
     )
     return limited_candidates
