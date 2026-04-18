@@ -96,7 +96,7 @@ def main() -> None:
             print(f"[ERROR] {err}")
             results["errors"].append(err)
         else:
-            print(f"[OK] subscribe K_1M")
+            print("[OK] subscribe K_1M")
             for code in args.codes:
                 ret2, kdata = quote_ctx.get_cur_kline(code, num=args.kbars, ktype=ft.KLType.K_1M)
                 if ret2 != ft.RET_OK:

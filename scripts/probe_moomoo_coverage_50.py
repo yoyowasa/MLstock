@@ -28,7 +28,7 @@ import socket
 import sys
 from datetime import date, datetime, time as dtime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -324,7 +324,7 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
     ap_ok = df["ap_ok"].sum() if alpaca_compare else None
 
     print(f"\n{'='*65}")
-    print(f"=== moomoo 50-basket coverage probe ===")
+    print("=== moomoo 50-basket coverage probe ===")
     if kline_date:
         print(f"    K_1M date: {kline_date}  window: 09:31-09:36 ET")
     print(f"{'='*65}")
@@ -339,7 +339,7 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
         print(f"  Alpaca IEX OK    : {ap_ok:3d} / {n} ({_pct(ap_ok, n)})")
 
     # by cap
-    print(f"\n[2] cap 別 coverage")
+    print("\n[2] cap 別 coverage")
     print(f"  {'cap':8s} {'n':>4} {'snap_ok':>8} {'snap%':>7}", end="")
     if kline_date:
         print(f" {'kline_ok':>9} {'kline%':>7}", end="")
@@ -361,7 +361,7 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
         print(row)
 
     # by exchange
-    print(f"\n[3] exchange 別 coverage")
+    print("\n[3] exchange 別 coverage")
     for exch in ["NASDAQ", "NYSE"]:
         sub = df[df["exchange"] == exch]
         ns = len(sub)
@@ -374,8 +374,8 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
 
     # Unknown / error breakdown
     if kline_date:
-        print(f"\n[4] K_1M エラー内訳")
-        err_df = df[df["kline_ok"] == False][["symbol", "cap", "kline_err"]].copy()
+        print("\n[4] K_1M エラー内訳")
+        err_df = df[~df["kline_ok"]][["symbol", "cap", "kline_err"]].copy()
         if err_df.empty:
             print("  エラーなし")
         else:
@@ -392,7 +392,7 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
             print(f"\n  Unknown stock 件数: {unknown_count} / {len(err_df)} error  ({_pct(unknown_count, n)} 全体比)")
 
     # per-symbol table
-    print(f"\n[5] 銘柄別詳細")
+    print("\n[5] 銘柄別詳細")
     cols = ["symbol", "cap", "exchange", "snap_ok", "kline_ok", "kline_bars", "kline_first", "verdict"]
     if alpaca_compare:
         cols += ["ap_ok", "ap_bars"]

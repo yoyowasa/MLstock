@@ -334,8 +334,6 @@ def scan_gap_candidates_moomoo_932(
         universe_syms = sorted(set(seed_df["symbol"].dropna().astype(str).str.strip().str.upper().tolist()))
 
     universe_count = len(universe_syms)
-    codes_mm = [f"US.{s}" for s in universe_syms]
-
     # --- OpenD check ---
     if not check_opend(opend_host, opend_port):
         raise ConnectionError(f"OpenD not reachable at {opend_host}:{opend_port}")

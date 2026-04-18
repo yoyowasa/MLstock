@@ -2,6 +2,11 @@
 
 ## 最終更新: 2026-04-18
 
+### 2026-04-19 追記
+- 修正: `ruff check .` の単純 lint エラーを最小変更で整理した。対象は `scripts/check_moomoo_probe.py`, `scripts/compare_gap_scan_alpaca_vs_moomoo.py`, `scripts/compare_moomoo_alpaca_open.py`, `scripts/probe_moomoo_coverage_50.py`, `scripts/probe_universe_coverage.py`, `scripts/run_gap_scan_moomoo_932.py`, `src/mlstock/jobs/gap_scanner_moomoo_932.py`。
+- 内容: 未使用 import 削除、プレースホルダ無し `f-string` の通常文字列化、`== False` を否定演算へ変更、未使用変数削除、`sys.path.insert(...)` 前提の script import に `# noqa: E402` を付与。
+- 影響: gap/moomoo 系の補助 script と実験 scanner の audit 通過性を改善。挙動変更は意図していない。
+
 ## 現在の状態: Gap戦略 観測基盤整理中（SCAN_ONLY + DRY_RUN --skip-options 並走）
 
 ### 現在の並走モード

@@ -28,15 +28,11 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-import yaml
+import yaml  # noqa: E402
 
-from mlstock.config.loader import load_config
-from mlstock.data.alpaca.client import AlpacaClient
-from mlstock.jobs.gap_scanner_moomoo_932 import (
-    MoomooScanDiagnostics,
-    check_opend,
-    scan_gap_candidates_moomoo_932,
-)
+from mlstock.config.loader import load_config  # noqa: E402
+from mlstock.data.alpaca.client import AlpacaClient  # noqa: E402
+from mlstock.jobs.gap_scanner_moomoo_932 import check_opend, scan_gap_candidates_moomoo_932  # noqa: E402
 
 
 def _parse_args() -> argparse.Namespace:

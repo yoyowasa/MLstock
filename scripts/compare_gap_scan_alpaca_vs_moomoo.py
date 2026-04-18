@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -135,7 +134,7 @@ def print_comparison(
         print(f"  {label:35s} {av:>10} {mv:>12}")
 
     # --- candidate overlap ---
-    print(f"\n[2] 候補一致")
+    print("\n[2] 候補一致")
     print(f"  Alpaca candidates : {sorted(ap_syms)}")
     print(f"  moomoo candidates : {sorted(mm_syms)}")
     print(f"  both              : {sorted(both)}")
@@ -145,7 +144,7 @@ def print_comparison(
     # --- per-symbol detail ---
     all_syms = sorted(ap_syms | mm_syms)
     if all_syms:
-        print(f"\n[3] 銘柄別詳細")
+        print("\n[3] 銘柄別詳細")
         hdr = f"  {'sym':8s} {'ap_gap%':>8} {'mm_gap%':>8} {'ap_pace':>8} {'mm_pace_x':>10} {'in_both':>8}"
         print(hdr)
         print("  " + "-" * 55)
@@ -161,7 +160,7 @@ def print_comparison(
             in_both = "✓" if sym in both else ""
             print(f"  {sym:8s} {ap_gap:>8} {mm_gap:>8} {ap_pace:>8} {mm_pace:>10} {in_both:>8}")
 
-    print(f"\n[4] 判定")
+    print("\n[4] 判定")
     overlap_rate = len(both) / max(len(ap_syms | mm_syms), 1) * 100
     print(f"  候補一致率: {len(both)}/{len(ap_syms | mm_syms)} ({overlap_rate:.1f}%)")
     if overlap_rate >= 70:

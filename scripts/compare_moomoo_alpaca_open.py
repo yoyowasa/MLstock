@@ -16,7 +16,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import socket
 import sys
 from datetime import date, datetime, time as dtime
@@ -28,7 +27,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mlstock.data.alpaca.client import AlpacaClient
+from mlstock.data.alpaca.client import AlpacaClient  # noqa: E402
 
 ET = ZoneInfo("America/New_York")
 UTC = ZoneInfo("UTC")
@@ -268,7 +267,7 @@ def print_summary(df_cmp: pd.DataFrame, feed: str, probe_date: date) -> None:
     print(f"  both missing    : {both_miss}")
 
     display_cols = ["symbol", "mm_bars", "ap_bars", "mm_open", "ap_open", "mm_vol", "ap_vol", "verdict"]
-    print(f"\n--- per-symbol ---")
+    print("\n--- per-symbol ---")
     print(df_cmp[display_cols].sort_values("verdict").to_string(index=False))
 
 

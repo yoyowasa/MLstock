@@ -22,10 +22,9 @@ import argparse
 import json
 import re
 import sys
-from collections import Counter
 from datetime import date, datetime, time as dtime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -33,7 +32,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mlstock.data.alpaca.client import AlpacaClient
+from mlstock.data.alpaca.client import AlpacaClient  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -240,12 +239,12 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
     print("=== universe coverage probe: summary ===")
     print("=" * 65)
 
-    print(f"\n[1] 銘柄タイプ別件数 (seed 2000)")
+    print("\n[1] 銘柄タイプ別件数 (seed 2000)")
     cls_counts = df["sym_class"].value_counts()
     for k, v in cls_counts.items():
         print(f"  {k:20s}: {v:5d} ({_pct(v, len(df))})")
 
-    print(f"\n[2] exchange 別件数")
+    print("\n[2] exchange 別件数")
     exch_counts = df["exchange"].value_counts()
     for k, v in exch_counts.items():
         print(f"  {k:10s}: {v:5d}")
@@ -254,7 +253,7 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
         print("\n  (API probe skipped -- add --probe-date YYYY-MM-DD for coverage data)")
         return
 
-    print(f"\n[3] 銘柄タイプ別 daily_bar / open_1m 取得率")
+    print("\n[3] 銘柄タイプ別 daily_bar / open_1m 取得率")
     print(f"  {'type':20s} {'count':>6} {'daily':>7} {'daily%':>8} {'open1m':>7} {'open1m%':>9}")
     print("  " + "-" * 62)
     for cls in df["sym_class"].unique():
@@ -269,7 +268,7 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
     print("  " + "-" * 62)
     print(f"  {'TOTAL':20s} {total:6d} {d_tot:7d} {_pct(d_tot, total):>8} {o_tot:7d} {_pct(o_tot, total):>9}")
 
-    print(f"\n[4] exchange 別 open_1m 取得率")
+    print("\n[4] exchange 別 open_1m 取得率")
     print(f"  {'exchange':10s} {'count':>6} {'open1m':>7} {'open1m%':>9}")
     print("  " + "-" * 36)
     for exch in df["exchange"].unique():
@@ -281,7 +280,7 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
     # [5] common-only hypothetical
     common_df = df[df["sym_class"].isin(["common", "etf"])]
     common_open = common_df["has_open_1m_window"].sum()
-    print(f"\n[5] common + ETF のみ仮定した場合の open_1m coverage")
+    print("\n[5] common + ETF のみ仮定した場合の open_1m coverage")
     print(f"  common+etf count : {len(common_df)}")
     print(f"  open_1m count    : {common_open}")
     print(f"  open_1m rate     : {_pct(common_open, len(common_df))}")
@@ -290,13 +289,13 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
     # [6] non-standard contribution
     nonstd = df[~df["sym_class"].isin(["common", "etf"])]
     nonstd_open = nonstd["has_open_1m_window"].sum()
-    print(f"\n[6] 非標準銘柄 (warrant/preferred/right/unit/unknown) の寄与")
+    print("\n[6] 非標準銘柄 (warrant/preferred/right/unit/unknown) の寄与")
     print(f"  count        : {len(nonstd)}")
     print(f"  open_1m hits : {nonstd_open}")
     print(f"  → これを除外しても open_count は {nonstd_open} しか減らない")
     print(f"    (全 open_count {int(o_tot)} に対して {_pct(nonstd_open, int(o_tot))} 相当)")
 
-    print(f"\n[7] IEX要因 / universe構成要因 の寄与推定")
+    print("\n[7] IEX要因 / universe構成要因 の寄与推定")
     missing_total = total - int(o_tot)
     noncommon_no_open = len(nonstd) - nonstd_open
     iex_gap = missing_total - noncommon_no_open
@@ -307,7 +306,7 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
     print(f"  → IEX feed切替で改善できるのは少なくとも {_pct(iex_gap, missing_total)}")
 
     print("\n[8] 直ちに除外してよい候補（open_1m = 0 の非標準銘柄）")
-    zero_nonstd = nonstd[nonstd["has_open_1m_window"] == False]
+    zero_nonstd = nonstd[~nonstd["has_open_1m_window"]]
     for cls in ["warrant", "preferred", "right", "unit", "right_or_other", "unknown"]:
         sub = zero_nonstd[zero_nonstd["sym_class"] == cls]
         if len(sub):
