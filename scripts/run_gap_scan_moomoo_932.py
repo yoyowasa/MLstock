@@ -16,6 +16,7 @@ Usage:
   # Alpaca feed を SIP に変更
   python scripts/run_gap_scan_moomoo_932.py --date 2026-04-17 --alpaca-feed sip
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,16 +38,15 @@ from mlstock.jobs.gap_scanner_moomoo_932 import check_opend, scan_gap_candidates
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="moomoo 9:32 ET 実験版 gap scanner")
-    p.add_argument("--date", type=str, default=None,
-                   help="対象日 YYYY-MM-DD (デフォルト: 今日 ET)")
-    p.add_argument("--symbols", nargs="*", default=None,
-                   help="銘柄リスト (省略時は seed 2000銘柄)")
+    p.add_argument("--date", type=str, default=None, help="対象日 YYYY-MM-DD (デフォルト: 今日 ET)")
+    p.add_argument("--symbols", nargs="*", default=None, help="銘柄リスト (省略時は seed 2000銘柄)")
     p.add_argument("--config", type=Path, default=ROOT / "config" / "config.yaml")
     p.add_argument("--gap-config", type=Path, default=ROOT / "config" / "gap_config.yaml")
     p.add_argument("--opend-host", default="127.0.0.1")
     p.add_argument("--opend-port", type=int, default=11111)
-    p.add_argument("--alpaca-feed", default=None,
-                   help="Alpaca feed override (iex/sip). 省略時は config.yaml の bars.feed")
+    p.add_argument(
+        "--alpaca-feed", default=None, help="Alpaca feed override (iex/sip). 省略時は config.yaml の bars.feed"
+    )
     p.add_argument("--out-dir", type=Path, default=ROOT / "artifacts" / "gap_scan_moomoo")
     return p.parse_args()
 

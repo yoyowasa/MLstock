@@ -13,6 +13,7 @@ Usage:
   # Alpaca feed を SIP に変更
   python scripts/compare_moomoo_alpaca_open.py --date 2026-04-17 --basket --feed sip
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,17 +40,45 @@ CORE_3 = ["US.AAPL", "US.NVDA", "US.AAL"]
 
 BASKET_MOOMOO = [
     # large cap Nasdaq
-    "US.AAPL", "US.MSFT", "US.NVDA", "US.AMZN", "US.GOOGL", "US.META",
+    "US.AAPL",
+    "US.MSFT",
+    "US.NVDA",
+    "US.AMZN",
+    "US.GOOGL",
+    "US.META",
     # large cap NYSE
-    "US.JPM", "US.BAC", "US.XOM", "US.JNJ", "US.WMT", "US.PG",
+    "US.JPM",
+    "US.BAC",
+    "US.XOM",
+    "US.JNJ",
+    "US.WMT",
+    "US.PG",
     # mid cap / momentum
-    "US.AMD", "US.TSLA", "US.PLTR", "US.SOFI", "US.RIVN", "US.LCID",
+    "US.AMD",
+    "US.TSLA",
+    "US.PLTR",
+    "US.SOFI",
+    "US.RIVN",
+    "US.LCID",
     # low price / high vol
-    "US.AAL", "US.CCL", "US.F", "US.SNAP", "US.HOOD", "US.MARA",
+    "US.AAL",
+    "US.CCL",
+    "US.F",
+    "US.SNAP",
+    "US.HOOD",
+    "US.MARA",
     # ETF
-    "US.SPY", "US.QQQ", "US.IWM", "US.SQQQ", "US.TQQQ",
+    "US.SPY",
+    "US.QQQ",
+    "US.IWM",
+    "US.SQQQ",
+    "US.TQQQ",
     # NYSE utilities/finance
-    "US.T", "US.VZ", "US.C", "US.GS", "US.MS",
+    "US.T",
+    "US.VZ",
+    "US.C",
+    "US.GS",
+    "US.MS",
 ]
 
 # Alpaca 用: "US." プレフィックスなし
@@ -59,6 +88,7 @@ CORE_3_ALPACA = [s.replace("US.", "") for s in CORE_3]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -83,6 +113,7 @@ def _open_window(probe_date: date):
 # ---------------------------------------------------------------------------
 # moomoo fetch
 # ---------------------------------------------------------------------------
+
 
 def fetch_moomoo(codes_mm: list[str], probe_date: date, host: str = "127.0.0.1", port: int = 11111) -> pd.DataFrame:
     """Return per-symbol rows from moomoo K_1M for the open window."""
@@ -116,12 +147,18 @@ def fetch_moomoo(codes_mm: list[str], probe_date: date, host: str = "127.0.0.1",
                 max_count=20,
             )
             if ret2 != ft.RET_OK:
-                rows.append({
-                    "symbol": alpaca_sym, "source": "moomoo",
-                    "bars_in_window": 0, "first_time_key": None, "last_time_key": None,
-                    "open_available": False, "volume_available": False,
-                    "status": f"ERROR: {kdata}",
-                })
+                rows.append(
+                    {
+                        "symbol": alpaca_sym,
+                        "source": "moomoo",
+                        "bars_in_window": 0,
+                        "first_time_key": None,
+                        "last_time_key": None,
+                        "open_available": False,
+                        "volume_available": False,
+                        "status": f"ERROR: {kdata}",
+                    }
+                )
                 continue
 
             # filter to window [9:30, 9:35) — moomoo returns tz-naive local strings
@@ -129,31 +166,37 @@ def fetch_moomoo(codes_mm: list[str], probe_date: date, host: str = "127.0.0.1",
                 kdata["time_key"] = pd.to_datetime(kdata["time_key"])
                 start_naive = pd.Timestamp(start.replace(tzinfo=None))
                 end_naive = pd.Timestamp(end.replace(tzinfo=None))
-                kdata = kdata[
-                    (kdata["time_key"] >= start_naive) &
-                    (kdata["time_key"] < end_naive)
-                ]
+                kdata = kdata[(kdata["time_key"] >= start_naive) & (kdata["time_key"] < end_naive)]
 
             n = len(kdata)
             if n == 0:
-                rows.append({
-                    "symbol": alpaca_sym, "source": "moomoo",
-                    "bars_in_window": 0, "first_time_key": None, "last_time_key": None,
-                    "open_available": False, "volume_available": False,
-                    "status": "NO_BARS",
-                })
+                rows.append(
+                    {
+                        "symbol": alpaca_sym,
+                        "source": "moomoo",
+                        "bars_in_window": 0,
+                        "first_time_key": None,
+                        "last_time_key": None,
+                        "open_available": False,
+                        "volume_available": False,
+                        "status": "NO_BARS",
+                    }
+                )
             else:
                 has_open = "open" in kdata.columns and kdata["open"].notna().any()
                 has_vol = "volume" in kdata.columns and kdata["volume"].notna().any()
-                rows.append({
-                    "symbol": alpaca_sym, "source": "moomoo",
-                    "bars_in_window": n,
-                    "first_time_key": str(kdata["time_key"].iloc[0]),
-                    "last_time_key": str(kdata["time_key"].iloc[-1]),
-                    "open_available": has_open,
-                    "volume_available": has_vol,
-                    "status": "OK",
-                })
+                rows.append(
+                    {
+                        "symbol": alpaca_sym,
+                        "source": "moomoo",
+                        "bars_in_window": n,
+                        "first_time_key": str(kdata["time_key"].iloc[0]),
+                        "last_time_key": str(kdata["time_key"].iloc[-1]),
+                        "open_available": has_open,
+                        "volume_available": has_vol,
+                        "status": "OK",
+                    }
+                )
     finally:
         quote_ctx.close()
 
@@ -163,6 +206,7 @@ def fetch_moomoo(codes_mm: list[str], probe_date: date, host: str = "127.0.0.1",
 # ---------------------------------------------------------------------------
 # Alpaca fetch
 # ---------------------------------------------------------------------------
+
 
 def fetch_alpaca(symbols: list[str], probe_date: date, feed: str = "iex") -> pd.DataFrame:
     start, end = _open_window(probe_date)
@@ -183,27 +227,36 @@ def fetch_alpaca(symbols: list[str], probe_date: date, feed: str = "iex") -> pd.
     for sym in symbols:
         sym_bars = bars_map.get(sym, [])
         if not sym_bars:
-            rows.append({
-                "symbol": sym, "source": f"alpaca_{feed}",
-                "bars_in_window": 0, "first_time_key": None, "last_time_key": None,
-                "open_available": False, "volume_available": False,
-                "status": "NO_BARS",
-            })
+            rows.append(
+                {
+                    "symbol": sym,
+                    "source": f"alpaca_{feed}",
+                    "bars_in_window": 0,
+                    "first_time_key": None,
+                    "last_time_key": None,
+                    "open_available": False,
+                    "volume_available": False,
+                    "status": "NO_BARS",
+                }
+            )
         else:
             n = len(sym_bars)
             first_t = sym_bars[0].get("t", "")
             last_t = sym_bars[-1].get("t", "")
             has_open = any(b.get("o") is not None for b in sym_bars)
             has_vol = any(b.get("v") is not None for b in sym_bars)
-            rows.append({
-                "symbol": sym, "source": f"alpaca_{feed}",
-                "bars_in_window": n,
-                "first_time_key": first_t,
-                "last_time_key": last_t,
-                "open_available": has_open,
-                "volume_available": has_vol,
-                "status": "OK",
-            })
+            rows.append(
+                {
+                    "symbol": sym,
+                    "source": f"alpaca_{feed}",
+                    "bars_in_window": n,
+                    "first_time_key": first_t,
+                    "last_time_key": last_t,
+                    "open_available": has_open,
+                    "volume_available": has_vol,
+                    "status": "OK",
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -212,33 +265,40 @@ def fetch_alpaca(symbols: list[str], probe_date: date, feed: str = "iex") -> pd.
 # Compare & summarize
 # ---------------------------------------------------------------------------
 
-def compare(mm_df: pd.DataFrame, ap_df: pd.DataFrame) -> pd.DataFrame:
-    mm = mm_df.rename(columns={
-        "bars_in_window": "mm_bars",
-        "open_available": "mm_open",
-        "volume_available": "mm_vol",
-        "status": "mm_status",
-        "first_time_key": "mm_first",
-        "last_time_key": "mm_last",
-    }).drop(columns=["source"])
 
-    ap = ap_df.rename(columns={
-        "bars_in_window": "ap_bars",
-        "open_available": "ap_open",
-        "volume_available": "ap_vol",
-        "status": "ap_status",
-        "first_time_key": "ap_first",
-        "last_time_key": "ap_last",
-    }).drop(columns=["source"])
+def compare(mm_df: pd.DataFrame, ap_df: pd.DataFrame) -> pd.DataFrame:
+    mm = mm_df.rename(
+        columns={
+            "bars_in_window": "mm_bars",
+            "open_available": "mm_open",
+            "volume_available": "mm_vol",
+            "status": "mm_status",
+            "first_time_key": "mm_first",
+            "last_time_key": "mm_last",
+        }
+    ).drop(columns=["source"])
+
+    ap = ap_df.rename(
+        columns={
+            "bars_in_window": "ap_bars",
+            "open_available": "ap_open",
+            "volume_available": "ap_vol",
+            "status": "ap_status",
+            "first_time_key": "ap_first",
+            "last_time_key": "ap_last",
+        }
+    ).drop(columns=["source"])
 
     merged = mm.merge(ap, on="symbol", how="outer")
     merged["mm_bars"] = merged["mm_bars"].fillna(0).astype(int)
     merged["ap_bars"] = merged["ap_bars"].fillna(0).astype(int)
     merged["verdict"] = merged.apply(
-        lambda r: "BOTH_OK" if r["mm_status"] == "OK" and r["ap_status"] == "OK"
-        else ("MM_ONLY" if r["mm_status"] == "OK" else
-              ("AP_ONLY" if r["ap_status"] == "OK" else "BOTH_MISSING")),
-        axis=1
+        lambda r: (
+            "BOTH_OK"
+            if r["mm_status"] == "OK" and r["ap_status"] == "OK"
+            else ("MM_ONLY" if r["mm_status"] == "OK" else ("AP_ONLY" if r["ap_status"] == "OK" else "BOTH_MISSING"))
+        ),
+        axis=1,
     )
     return merged
 
@@ -274,6 +334,7 @@ def print_summary(df_cmp: pd.DataFrame, feed: str, probe_date: date) -> None:
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()

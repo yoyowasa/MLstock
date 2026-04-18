@@ -35,7 +35,7 @@ class Day0Config:
     min_first5_pace: float = 1.5
     min_first5_oc_ret: float = 0.0
     min_close_vs_vwap_ratio: float = 1.0
-    decision_time_et: str = '09:35:05'
+    decision_time_et: str = "09:35:05"
 
 
 @dataclass(frozen=True)
@@ -62,17 +62,17 @@ _DEF = StrategyConfig(
 def _read_yaml(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
-    with path.open('r', encoding='utf-8') as handle:
+    with path.open("r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
     return data or {}
 
 
 def load_strategy_config(path: Path | None = None) -> StrategyConfig:
     raw = _read_yaml(path or config_path())
-    universe_raw = raw.get('universe', {}) if isinstance(raw.get('universe'), dict) else {}
-    d1_raw = raw.get('d1', {}) if isinstance(raw.get('d1'), dict) else {}
-    day0_raw = raw.get('day0', {}) if isinstance(raw.get('day0'), dict) else {}
-    risk_raw = raw.get('risk', {}) if isinstance(raw.get('risk'), dict) else {}
+    universe_raw = raw.get("universe", {}) if isinstance(raw.get("universe"), dict) else {}
+    d1_raw = raw.get("d1", {}) if isinstance(raw.get("d1"), dict) else {}
+    day0_raw = raw.get("day0", {}) if isinstance(raw.get("day0"), dict) else {}
+    risk_raw = raw.get("risk", {}) if isinstance(raw.get("risk"), dict) else {}
     return StrategyConfig(
         universe=UniverseConfig(**{**_DEF.universe.__dict__, **universe_raw}),
         d1=D1Config(**{**_DEF.d1.__dict__, **d1_raw}),

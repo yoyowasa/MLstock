@@ -16,6 +16,7 @@ Usage:
   # 出力先を変更
   python scripts/probe_universe_coverage.py --probe-date 2026-04-17 --out-dir artifacts/coverage
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,28 +40,33 @@ from mlstock.data.alpaca.client import AlpacaClient  # noqa: E402
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Probe IEX coverage of seed universe")
-    p.add_argument("--probe-date", type=str, default=None,
-                   help="Market date (YYYY-MM-DD) to query 9:30-9:35 ET 1-min bars. "
-                        "If omitted, only static analysis is run.")
-    p.add_argument("--static-only", action="store_true",
-                   help="Skip API probe and only run static classification.")
-    p.add_argument("--out-dir", type=Path, default=ROOT / "artifacts" / "coverage",
-                   help="Output directory (default: artifacts/coverage)")
-    p.add_argument("--seed-path", type=Path,
-                   default=ROOT / "data" / "reference" / "seed_symbols.parquet")
-    p.add_argument("--assets-path", type=Path,
-                   default=ROOT / "data" / "reference" / "assets.parquet")
+    p.add_argument(
+        "--probe-date",
+        type=str,
+        default=None,
+        help="Market date (YYYY-MM-DD) to query 9:30-9:35 ET 1-min bars. " "If omitted, only static analysis is run.",
+    )
+    p.add_argument("--static-only", action="store_true", help="Skip API probe and only run static classification.")
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        default=ROOT / "artifacts" / "coverage",
+        help="Output directory (default: artifacts/coverage)",
+    )
+    p.add_argument("--seed-path", type=Path, default=ROOT / "data" / "reference" / "seed_symbols.parquet")
+    p.add_argument("--assets-path", type=Path, default=ROOT / "data" / "reference" / "assets.parquet")
     p.add_argument("--batch-size", type=int, default=200)
-    p.add_argument("--feed", type=str, default="iex",
-                   help="Alpaca data feed (iex or sip)")
+    p.add_argument("--feed", type=str, default="iex", help="Alpaca data feed (iex or sip)")
     return p.parse_args()
 
 
 # ---------------------------------------------------------------------------
 # Static classification
 # ---------------------------------------------------------------------------
+
 
 def _parse_asset_raw(raw: Any) -> Tuple[str, str, List[str]]:
     """(asset_class, full_name, attributes)"""
@@ -127,18 +133,15 @@ def build_static_df(seed_path: Path, assets_path: Path) -> pd.DataFrame:
 
     merged = seed_df[["symbol", "seed_rank"]].merge(
         assets_df[["symbol", "exchange", "tradable", "shortable", "full_name", "attrs"]],
-        on="symbol", how="left",
+        on="symbol",
+        how="left",
     )
     merged["full_name"] = merged["full_name"].fillna("")
     merged["exchange"] = merged["exchange"].fillna("UNKNOWN")
     merged["tradable"] = merged["tradable"].fillna(False)
     merged["shortable"] = merged["shortable"].fillna(False)
-    merged["has_options"] = merged["attrs"].apply(
-        lambda a: "has_options" in a if isinstance(a, list) else False
-    )
-    merged["sym_class"] = merged.apply(
-        lambda r: _classify_symbol(r["symbol"], r["full_name"]), axis=1
-    )
+    merged["has_options"] = merged["attrs"].apply(lambda a: "has_options" in a if isinstance(a, list) else False)
+    merged["sym_class"] = merged.apply(lambda r: _classify_symbol(r["symbol"], r["full_name"]), axis=1)
     # market_cap_bucket: unknown until probed
     merged["has_daily_bar"] = pd.NA
     merged["has_open_1m_window"] = pd.NA
@@ -148,6 +151,7 @@ def build_static_df(seed_path: Path, assets_path: Path) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Alpaca probe
 # ---------------------------------------------------------------------------
+
 
 def _chunk(items: List[str], size: int) -> Iterable[List[str]]:
     for i in range(0, len(items), size):
@@ -169,6 +173,7 @@ def _probe_daily_coverage(
     tz = ZoneInfo("America/New_York")
     # look back 5 calendar days to find prev_close
     from datetime import timedelta
+
     start = datetime.combine(probe_date - timedelta(days=10), dtime(0, 0), tzinfo=tz)
     end = datetime.combine(probe_date, dtime(0, 0), tzinfo=tz)
     result: Dict[str, bool] = {}
@@ -229,6 +234,7 @@ def _probe_open_coverage(
 # ---------------------------------------------------------------------------
 # Summary tables
 # ---------------------------------------------------------------------------
+
 
 def _pct(n: int, d: int) -> str:
     return f"{n/d*100:.1f}%" if d else "n/a"
@@ -319,6 +325,7 @@ def print_summary(df: pd.DataFrame, probed: bool) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     args = _parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -357,9 +364,16 @@ def main() -> None:
     # CSV出力
     csv_path = args.out_dir / f"universe_coverage{'_' + args.probe_date if args.probe_date else '_static'}.csv"
     out_cols = [
-        "symbol", "seed_rank", "exchange", "tradable", "shortable",
-        "sym_class", "has_options", "full_name",
-        "has_daily_bar", "has_open_1m_window",
+        "symbol",
+        "seed_rank",
+        "exchange",
+        "tradable",
+        "shortable",
+        "sym_class",
+        "has_options",
+        "full_name",
+        "has_daily_bar",
+        "has_open_1m_window",
     ]
     df[out_cols].to_csv(csv_path, index=False)
     print(f"[saved] {csv_path}")

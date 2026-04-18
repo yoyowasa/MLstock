@@ -15,6 +15,7 @@ Usage:
     --alpaca-log artifacts/logs/gap_trade_20260417_093200.jsonl \\
     --moomoo-json artifacts/gap_scan_moomoo/moomoo_932_scan_2026-04-17_....json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 # Alpaca log loader
 # ---------------------------------------------------------------------------
+
 
 def _load_alpaca_candidates(log_path: Path) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     """Return (diagnostics, candidates) from a gap_trade JSONL log."""
@@ -69,6 +71,7 @@ def _find_alpaca_log(date_str: str) -> Optional[Path]:
 # moomoo JSON loader
 # ---------------------------------------------------------------------------
 
+
 def _load_moomoo_result(json_path: Path) -> tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
@@ -86,6 +89,7 @@ def _find_moomoo_json(date_str: str) -> Optional[Path]:
 # ---------------------------------------------------------------------------
 # Compare
 # ---------------------------------------------------------------------------
+
 
 def _sym_set(candidates: List[Dict[str, Any]], key: str = "symbol") -> set:
     return {str(c.get(key, "")).upper() for c in candidates}
@@ -113,20 +117,23 @@ def print_comparison(
     print(f"  {'指標':35s} {'Alpaca':>10} {'moomoo-9:32':>12}")
     print("  " + "-" * 60)
 
-    def ap(k): return str(alpaca_diag.get(k, "n/a")) if alpaca_diag else "n/a"
-    def mm(k): return str(moomoo_diag.get(k, "n/a")) if moomoo_diag else "n/a"
+    def ap(k):
+        return str(alpaca_diag.get(k, "n/a")) if alpaca_diag else "n/a"
+
+    def mm(k):
+        return str(moomoo_diag.get(k, "n/a")) if moomoo_diag else "n/a"
 
     rows = [
-        ("universe_count",          "universe_count",          "universe_count"),
-        ("daily_stats",             "daily_count",             "daily_stats_count"),
-        ("snapshot/open OK",        "open_count",              "snapshot_ok_count"),
-        ("kline OK",                "n/a",                     "kline_0931_ok_count"),
-        ("missing open/snapshot",   "missing_open_count",      "missing_snapshot_count"),
-        ("price_filter_drop",       "price_filter_drop_count", "price_filter_drop_count"),
-        ("gap_filter_drop",         "gap_filter_drop_count",   "gap_filter_drop_count"),
-        ("volume_filter_drop",      "pace_filter_drop_count",  "volume_filter_drop_count"),
-        ("market_cap_drop",         "market_cap_drop_count",   "market_cap_drop_count"),
-        ("final_candidates",        "final_candidate_count",   "final_candidate_count"),
+        ("universe_count", "universe_count", "universe_count"),
+        ("daily_stats", "daily_count", "daily_stats_count"),
+        ("snapshot/open OK", "open_count", "snapshot_ok_count"),
+        ("kline OK", "n/a", "kline_0931_ok_count"),
+        ("missing open/snapshot", "missing_open_count", "missing_snapshot_count"),
+        ("price_filter_drop", "price_filter_drop_count", "price_filter_drop_count"),
+        ("gap_filter_drop", "gap_filter_drop_count", "gap_filter_drop_count"),
+        ("volume_filter_drop", "pace_filter_drop_count", "volume_filter_drop_count"),
+        ("market_cap_drop", "market_cap_drop_count", "market_cap_drop_count"),
+        ("final_candidates", "final_candidate_count", "final_candidate_count"),
     ]
     for label, ak, mk in rows:
         av = ap(ak) if ak != "n/a" else "n/a"
@@ -148,15 +155,17 @@ def print_comparison(
         hdr = f"  {'sym':8s} {'ap_gap%':>8} {'mm_gap%':>8} {'ap_pace':>8} {'mm_pace_x':>10} {'in_both':>8}"
         print(hdr)
         print("  " + "-" * 55)
-        ap_map = {str(c.get("symbol","")).upper(): c for c in alpaca_cands}
-        mm_map = {str(c.get("symbol","")).upper(): c for c in moomoo_cands}
+        ap_map = {str(c.get("symbol", "")).upper(): c for c in alpaca_cands}
+        mm_map = {str(c.get("symbol", "")).upper(): c for c in moomoo_cands}
         for sym in all_syms:
             ac = ap_map.get(sym, {})
             mc = mm_map.get(sym, {})
             ap_gap = f"{float(ac['gap_pct']):.2f}" if ac.get("gap_pct") is not None else "-"
             mm_gap = f"{float(mc['gap_pct']):.2f}" if mc.get("gap_pct") is not None else "-"
             ap_pace = f"{float(ac.get('volume_pace_ratio', ac.get('daily_volume_pace', 0))):.2f}" if ac else "-"
-            mm_pace = f"{float(mc['volume_pace_annualized']):.2f}" if mc.get("volume_pace_annualized") is not None else "-"
+            mm_pace = (
+                f"{float(mc['volume_pace_annualized']):.2f}" if mc.get("volume_pace_annualized") is not None else "-"
+            )
             in_both = "✓" if sym in both else ""
             print(f"  {sym:8s} {ap_gap:>8} {mm_gap:>8} {ap_pace:>8} {mm_pace:>10} {in_both:>8}")
 
@@ -174,6 +183,7 @@ def print_comparison(
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -199,7 +209,9 @@ def main() -> None:
     # moomoo json
     mm_path = args.moomoo_json or _find_moomoo_json(args.date)
     if mm_path is None or not mm_path.exists():
-        print(f"[WARN] moomoo scan JSON not found for {args.date}. Run run_gap_scan_moomoo_932.py first.", file=sys.stderr)
+        print(
+            f"[WARN] moomoo scan JSON not found for {args.date}. Run run_gap_scan_moomoo_932.py first.", file=sys.stderr
+        )
         moomoo_diag, moomoo_cands = None, []
     else:
         print(f"[moomoo] {mm_path}")

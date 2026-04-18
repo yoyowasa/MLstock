@@ -18,6 +18,7 @@ gap_scanner_moomoo_932.py  —  実験版 gap scanner (moomoo / 9:32 ET 判定)
 【live/order/unlock_trade】
   - 一切触らない。scan-only 出力のみ。
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,15 +43,16 @@ ET = ZoneInfo("America/New_York")
 # Result types
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class MoomooGapCandidate:
     symbol: str
     open_price: float
     prev_close_price: float
     gap_pct: float
-    bar_0931_volume: float       # 9:31 bar の volume (単一 bar)
+    bar_0931_volume: float  # 9:31 bar の volume (単一 bar)
     avg_volume_30d: float
-    volume_ratio: float          # bar_0931_volume / avg_volume_30d (※日次換算なし)
+    volume_ratio: float  # bar_0931_volume / avg_volume_30d (※日次換算なし)
     volume_pace_annualized: float  # bar_0931_volume * 390  / avg_volume_30d (簡易換算)
     market_cap_m: float
     snapshot_update_time: str
@@ -82,6 +84,7 @@ class MoomooScanDiagnostics:
 # OpenD preflight
 # ---------------------------------------------------------------------------
 
+
 def check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
@@ -96,9 +99,10 @@ def check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
 # Alpaca daily stats (avg_volume / prev_close)
 # ---------------------------------------------------------------------------
 
+
 def _chunk(items: List[str], size: int) -> Iterable[List[str]]:
     for i in range(0, len(items), size):
-        yield items[i: i + size]
+        yield items[i : i + size]
 
 
 def _iso_utc(dt: datetime) -> str:
@@ -167,6 +171,7 @@ def _fetch_daily_stats(
 # moomoo snapshot batch
 # ---------------------------------------------------------------------------
 
+
 def _fetch_moomoo_snapshots(
     quote_ctx: Any,
     codes_mm: List[str],
@@ -178,6 +183,7 @@ def _fetch_moomoo_snapshots(
     バッチ失敗時は 1 銘柄ずつ fallback して未知銘柄をスキップする。
     """
     import moomoo as ft
+
     result: Dict[str, Dict[str, Any]] = {}
 
     def _try_batch(codes: List[str]) -> bool:
@@ -202,6 +208,7 @@ def _fetch_moomoo_snapshots(
 # ---------------------------------------------------------------------------
 # moomoo K_1M 9:31 bar
 # ---------------------------------------------------------------------------
+
 
 def _fetch_moomoo_0931_bars(
     quote_ctx: Any,
@@ -249,6 +256,7 @@ def _fetch_moomoo_0931_bars(
 # market cap (yfinance, same as gap_scanner.py)
 # ---------------------------------------------------------------------------
 
+
 def _fetch_market_caps_m(
     symbols: List[str],
     delay_sec: float,
@@ -288,6 +296,7 @@ def _fetch_market_caps_m(
 # ---------------------------------------------------------------------------
 # Main scan function
 # ---------------------------------------------------------------------------
+
 
 def scan_gap_candidates_moomoo_932(
     cfg: AppConfig,
@@ -418,17 +427,19 @@ def scan_gap_candidates_moomoo_932(
             continue
 
         update_time = str(snap.get("update_time", ""))
-        raw_candidates.append({
-            "symbol": sym,
-            "open_price": open_price,
-            "prev_close_price": prev_close,
-            "gap_pct": gap_pct,
-            "bar_0931_volume": bar_vol,
-            "avg_volume_30d": avg_vol,
-            "volume_ratio": volume_ratio,
-            "volume_pace_annualized": volume_pace_annualized,
-            "snapshot_update_time": update_time,
-        })
+        raw_candidates.append(
+            {
+                "symbol": sym,
+                "open_price": open_price,
+                "prev_close_price": prev_close,
+                "gap_pct": gap_pct,
+                "bar_0931_volume": bar_vol,
+                "avg_volume_30d": avg_vol,
+                "volume_ratio": volume_ratio,
+                "volume_pace_annualized": volume_pace_annualized,
+                "snapshot_update_time": update_time,
+            }
+        )
 
     # --- market cap ---
     market_cap_drop = 0
@@ -445,18 +456,20 @@ def scan_gap_candidates_moomoo_932(
                 if mc_m < 0 or mc_m < min_market_cap_m:
                     market_cap_drop += 1
                     continue
-            candidates.append(MoomooGapCandidate(
-                symbol=sym,
-                open_price=r["open_price"],
-                prev_close_price=r["prev_close_price"],
-                gap_pct=r["gap_pct"],
-                bar_0931_volume=r["bar_0931_volume"],
-                avg_volume_30d=r["avg_volume_30d"],
-                volume_ratio=r["volume_ratio"],
-                volume_pace_annualized=r["volume_pace_annualized"],
-                market_cap_m=mc_m,
-                snapshot_update_time=r["snapshot_update_time"],
-            ))
+            candidates.append(
+                MoomooGapCandidate(
+                    symbol=sym,
+                    open_price=r["open_price"],
+                    prev_close_price=r["prev_close_price"],
+                    gap_pct=r["gap_pct"],
+                    bar_0931_volume=r["bar_0931_volume"],
+                    avg_volume_30d=r["avg_volume_30d"],
+                    volume_ratio=r["volume_ratio"],
+                    volume_pace_annualized=r["volume_pace_annualized"],
+                    market_cap_m=mc_m,
+                    snapshot_update_time=r["snapshot_update_time"],
+                )
+            )
 
     candidates.sort(key=lambda c: (c.volume_pace_annualized, c.gap_pct), reverse=True)
     limited = candidates[:max_candidates]
@@ -484,11 +497,13 @@ def scan_gap_candidates_moomoo_932(
 # internal logger helper
 # ---------------------------------------------------------------------------
 
+
 def _log(logger: Optional[logging.Logger], event: str, **fields: Any) -> None:
     if logger is None:
         return
     try:
         from mlstock.logging.logger import log_event
+
         log_event(logger, event, **fields)
     except Exception:
         pass

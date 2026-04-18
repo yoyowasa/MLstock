@@ -6,6 +6,9 @@
 - 修正: `ruff check .` の単純 lint エラーを最小変更で整理した。対象は `scripts/check_moomoo_probe.py`, `scripts/compare_gap_scan_alpaca_vs_moomoo.py`, `scripts/compare_moomoo_alpaca_open.py`, `scripts/probe_moomoo_coverage_50.py`, `scripts/probe_universe_coverage.py`, `scripts/run_gap_scan_moomoo_932.py`, `src/mlstock/jobs/gap_scanner_moomoo_932.py`。
 - 内容: 未使用 import 削除、プレースホルダ無し `f-string` の通常文字列化、`== False` を否定演算へ変更、未使用変数削除、`sys.path.insert(...)` 前提の script import に `# noqa: E402` を付与。
 - 影響: gap/moomoo 系の補助 script と実験 scanner の audit 通過性を改善。挙動変更は意図していない。
+- 修正: `black --check .` 失敗に対応し、24 ファイルを `black 25.12.0` で整形した。対象は moomoo 補助 script、`src/mlstock/jobs/gap_scanner_moomoo_932.py`、`strategies/gap_d1_0935` 配下の script/src、`tests/test_gap_d1_0935_strategy.py`。
+- 内容: 書式のみ統一。行分割、import 配置、dict/list/関数引数の改行位置を `black` 標準へ合わせた。
+- 影響: CI の `python -m black --check .` 通過性を回復。機能変更は意図していない。
 
 ## 現在の状態: Gap戦略 観測基盤整理中（SCAN_ONLY + DRY_RUN --skip-options 並走）
 

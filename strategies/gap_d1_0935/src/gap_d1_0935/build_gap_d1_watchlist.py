@@ -7,7 +7,16 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from .common import ET, chunked, fetch_bars_batch, get_previous_trading_day, infer_trade_date, load_alpaca_client, load_seed_symbols, to_local_ts
+from .common import (
+    ET,
+    chunked,
+    fetch_bars_batch,
+    get_previous_trading_day,
+    infer_trade_date,
+    load_alpaca_client,
+    load_seed_symbols,
+    to_local_ts,
+)
 from .config import StrategyConfig, load_strategy_config
 from .logutil import build_strategy_logger, log_event
 from .metadata import fetch_symbol_profiles, should_exclude_non_common
@@ -35,7 +44,7 @@ def _build_daily_frame(symbols: List[str], trade_date: date) -> pd.DataFrame:
             symbols=batch,
             start=start_local,
             end=end_local,
-            timeframe='1Day',
+            timeframe="1Day",
             feed=cfg.bars.feed,
             adjustment=cfg.bars.adjustment,
             asof=cfg.bars.asof,
@@ -43,16 +52,16 @@ def _build_daily_frame(symbols: List[str], trade_date: date) -> pd.DataFrame:
         for symbol in batch:
             for item in response.get(symbol, []):
                 try:
-                    ts = to_local_ts(item.get('t'))
+                    ts = to_local_ts(item.get("t"))
                     rows.append(
                         {
-                            'symbol': symbol,
-                            'date': ts.date(),
-                            'open': float(item.get('o')),
-                            'high': float(item.get('h')),
-                            'low': float(item.get('l')),
-                            'close': float(item.get('c')),
-                            'volume': float(item.get('v')),
+                            "symbol": symbol,
+                            "date": ts.date(),
+                            "open": float(item.get("o")),
+                            "high": float(item.get("h")),
+                            "low": float(item.get("l")),
+                            "close": float(item.get("c")),
+                            "volume": float(item.get("v")),
                         }
                     )
                 except (TypeError, ValueError):
@@ -69,12 +78,12 @@ def build_gap_d1_watchlist(
     _, client = load_alpaca_client()
     actual_trade_date = infer_trade_date(client, trade_date)
     previous_date = get_previous_trading_day(client, actual_trade_date)
-    logger, log_path = build_strategy_logger('gap_d1_watchlist', 'gap_d1_watchlist')
+    logger, log_path = build_strategy_logger("gap_d1_watchlist", "gap_d1_watchlist")
     universe = sorted(set(symbols or load_seed_symbols()))
     daily_df = _build_daily_frame(universe, actual_trade_date)
     if daily_df.empty:
-        raise ValueError('No daily bars fetched for watchlist build')
-    daily_df = daily_df.sort_values(['symbol', 'date']).reset_index(drop=True)
+        raise ValueError("No daily bars fetched for watchlist build")
+    daily_df = daily_df.sort_values(["symbol", "date"]).reset_index(drop=True)
 
     selected_rows: List[Dict[str, Any]] = []
     excluded_non_common = 0
@@ -86,22 +95,25 @@ def build_gap_d1_watchlist(
     excluded_close_strength = 0
     profiles_cache: Dict[str, Any] = {}
 
-    for symbol, frame in daily_df.groupby('symbol'):
-        frame = frame.sort_values('date').reset_index(drop=True)
-        frame = frame[frame['date'] <= previous_date]
+    for symbol, frame in daily_df.groupby("symbol"):
+        frame = frame.sort_values("date").reset_index(drop=True)
+        frame = frame[frame["date"] <= previous_date]
         if len(frame) < max(cfg.d1.lookback_days, 2):
             continue
         latest = frame.iloc[-1]
         prior = frame.iloc[-2]
         tail = frame.tail(cfg.d1.lookback_days)
-        avg_volume_20 = float(tail['volume'].mean())
-        avg_dollar_volume_20 = float((tail['close'] * tail['volume']).mean())
-        close_d1 = float(latest['close'])
+        avg_volume_20 = float(tail["volume"].mean())
+        avg_dollar_volume_20 = float((tail["close"] * tail["volume"]).mean())
+        close_d1 = float(latest["close"])
 
         if not (cfg.universe.min_close <= close_d1 <= cfg.universe.max_close):
             excluded_price += 1
             continue
-        if avg_volume_20 < cfg.universe.min_avg_volume_20 or avg_dollar_volume_20 < cfg.universe.min_avg_dollar_volume_20:
+        if (
+            avg_volume_20 < cfg.universe.min_avg_volume_20
+            or avg_dollar_volume_20 < cfg.universe.min_avg_dollar_volume_20
+        ):
             excluded_liquidity += 1
             continue
 
@@ -116,11 +128,15 @@ def build_gap_d1_watchlist(
             excluded_market_cap += 1
             continue
 
-        prev_gap_pct = (float(latest['open']) - float(prior['close'])) / float(prior['close']) * 100.0
-        rel_vol_prev = float(latest['volume']) / avg_volume_20 if avg_volume_20 > 0 else 0.0
-        day_range = float(latest['high']) - float(latest['low'])
-        close_in_range_prev = (float(latest['close']) - float(latest['low'])) / day_range if day_range > 0 else 0.0
-        oc_ret_prev = (float(latest['close']) - float(latest['open'])) / float(latest['open']) * 100.0 if float(latest['open']) > 0 else 0.0
+        prev_gap_pct = (float(latest["open"]) - float(prior["close"])) / float(prior["close"]) * 100.0
+        rel_vol_prev = float(latest["volume"]) / avg_volume_20 if avg_volume_20 > 0 else 0.0
+        day_range = float(latest["high"]) - float(latest["low"])
+        close_in_range_prev = (float(latest["close"]) - float(latest["low"])) / day_range if day_range > 0 else 0.0
+        oc_ret_prev = (
+            (float(latest["close"]) - float(latest["open"])) / float(latest["open"]) * 100.0
+            if float(latest["open"]) > 0
+            else 0.0
+        )
 
         if prev_gap_pct < cfg.d1.min_prev_gap_pct:
             excluded_gap += 1
@@ -134,46 +150,65 @@ def build_gap_d1_watchlist(
 
         selected_rows.append(
             {
-                'symbol': symbol,
-                'trade_date': actual_trade_date.isoformat(),
-                'open_D-1': float(latest['open']),
-                'high_D-1': float(latest['high']),
-                'low_D-1': float(latest['low']),
-                'close_D-1': float(latest['close']),
-                'close_D-2': float(prior['close']),
-                'prev_gap_pct': prev_gap_pct,
-                'rel_vol_prev': rel_vol_prev,
-                'close_in_range_prev': close_in_range_prev,
-                'oc_ret_prev': oc_ret_prev,
-                'market_cap': market_cap,
-                'avg_volume_20': avg_volume_20,
-                'avg_dollar_volume_20': avg_dollar_volume_20,
-                'sector': profile.sector,
-                'security_type': profile.security_type,
-                'index_ret_D-1': None,
-                'sector_ret_D-1': None,
-                'selected_reason': 'prev_gap+rel_vol+close_strength',
-                'quote_type': profile.quote_type,
-                'exchange': profile.exchange,
-                'suffix_pattern': profile.suffix_pattern,
-                'market_cap_bucket': profile.market_cap_bucket,
+                "symbol": symbol,
+                "trade_date": actual_trade_date.isoformat(),
+                "open_D-1": float(latest["open"]),
+                "high_D-1": float(latest["high"]),
+                "low_D-1": float(latest["low"]),
+                "close_D-1": float(latest["close"]),
+                "close_D-2": float(prior["close"]),
+                "prev_gap_pct": prev_gap_pct,
+                "rel_vol_prev": rel_vol_prev,
+                "close_in_range_prev": close_in_range_prev,
+                "oc_ret_prev": oc_ret_prev,
+                "market_cap": market_cap,
+                "avg_volume_20": avg_volume_20,
+                "avg_dollar_volume_20": avg_dollar_volume_20,
+                "sector": profile.sector,
+                "security_type": profile.security_type,
+                "index_ret_D-1": None,
+                "sector_ret_D-1": None,
+                "selected_reason": "prev_gap+rel_vol+close_strength",
+                "quote_type": profile.quote_type,
+                "exchange": profile.exchange,
+                "suffix_pattern": profile.suffix_pattern,
+                "market_cap_bucket": profile.market_cap_bucket,
             }
         )
 
     columns = [
-        'symbol', 'trade_date', 'open_D-1', 'high_D-1', 'low_D-1', 'close_D-1', 'close_D-2', 'prev_gap_pct',
-        'rel_vol_prev', 'close_in_range_prev', 'oc_ret_prev', 'market_cap', 'avg_volume_20', 'avg_dollar_volume_20',
-        'sector', 'security_type', 'index_ret_D-1', 'sector_ret_D-1', 'selected_reason', 'quote_type', 'exchange',
-        'suffix_pattern', 'market_cap_bucket'
+        "symbol",
+        "trade_date",
+        "open_D-1",
+        "high_D-1",
+        "low_D-1",
+        "close_D-1",
+        "close_D-2",
+        "prev_gap_pct",
+        "rel_vol_prev",
+        "close_in_range_prev",
+        "oc_ret_prev",
+        "market_cap",
+        "avg_volume_20",
+        "avg_dollar_volume_20",
+        "sector",
+        "security_type",
+        "index_ret_D-1",
+        "sector_ret_D-1",
+        "selected_reason",
+        "quote_type",
+        "exchange",
+        "suffix_pattern",
+        "market_cap_bucket",
     ]
-    selected_df = pd.DataFrame(selected_rows, columns=columns).sort_values('symbol').reset_index(drop=True)
+    selected_df = pd.DataFrame(selected_rows, columns=columns).sort_values("symbol").reset_index(drop=True)
     csv_path = watchlist_path(actual_trade_date)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     selected_df.to_csv(csv_path, index=False)
 
     log_event(
         logger,
-        'watchlist_complete',
+        "watchlist_complete",
         trade_date=actual_trade_date.isoformat(),
         previous_date=previous_date.isoformat(),
         universe_count=len(universe),

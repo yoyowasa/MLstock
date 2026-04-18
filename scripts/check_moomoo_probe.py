@@ -12,6 +12,7 @@ Usage:
   python scripts/check_moomoo_probe.py
   python scripts/check_moomoo_probe.py --codes US.AAPL US.NVDA US.AAL
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,6 +38,7 @@ def _check_gap_fields(snapshot_row: dict) -> list[str]:
 
 def _check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
         try:
@@ -66,7 +68,13 @@ def main() -> None:
     print(f"[OK] OpenD reachable at {args.host}:{args.port}")
     print()
 
-    results: dict = {"ts_utc": datetime.now(timezone.utc).isoformat(), "codes": args.codes, "snapshot": {}, "kline": {}, "errors": []}
+    results: dict = {
+        "ts_utc": datetime.now(timezone.utc).isoformat(),
+        "codes": args.codes,
+        "snapshot": {},
+        "kline": {},
+        "errors": [],
+    }
 
     quote_ctx = ft.OpenQuoteContext(host=args.host, port=args.port)
     try:
@@ -78,7 +86,11 @@ def main() -> None:
             results["errors"].append(msg)
         else:
             print(f"[OK] snapshot: {len(snap)} rows")
-            snap_cols = [c for c in ["code", "update_time", "last_price", "open_price", "prev_close_price", "volume", "suspension"] if c in snap.columns]
+            snap_cols = [
+                c
+                for c in ["code", "update_time", "last_price", "open_price", "prev_close_price", "volume", "suspension"]
+                if c in snap.columns
+            ]
             print(snap[snap_cols].to_string(index=False))
             print()
             for row in snap.to_dict(orient="records"):

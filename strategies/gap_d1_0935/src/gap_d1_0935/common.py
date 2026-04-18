@@ -13,8 +13,8 @@ from mlstock.data.storage.parquet import read_parquet
 from mlstock.data.storage.paths import reference_seed_symbols_path
 
 
-ET = ZoneInfo('America/New_York')
-UTC = ZoneInfo('UTC')
+ET = ZoneInfo("America/New_York")
+UTC = ZoneInfo("UTC")
 
 
 def load_root_config():
@@ -60,7 +60,7 @@ def fetch_bars_batch(
             limit=limit,
             page_token=page_token,
         )
-        bars = response.get('bars') if isinstance(response, dict) else None
+        bars = response.get("bars") if isinstance(response, dict) else None
         if isinstance(bars, dict):
             for symbol, items in bars.items():
                 key = str(symbol).upper()
@@ -68,7 +68,7 @@ def fetch_bars_batch(
                     collected[key].extend([item for item in items if isinstance(item, dict)])
         elif isinstance(bars, list) and len(symbols) == 1:
             collected[str(symbols[0]).upper()].extend([item for item in bars if isinstance(item, dict)])
-        page_token = response.get('next_page_token') if isinstance(response, dict) else None
+        page_token = response.get("next_page_token") if isinstance(response, dict) else None
         if not page_token:
             break
     return collected
@@ -78,11 +78,13 @@ def load_seed_symbols() -> List[str]:
     cfg = load_root_config()
     seed_path = reference_seed_symbols_path(cfg)
     seed_df = read_parquet(seed_path)
-    symbols = seed_df['symbol'].dropna().astype(str).str.strip().str.upper().tolist()
+    symbols = seed_df["symbol"].dropna().astype(str).str.strip().str.upper().tolist()
     return sorted(set(symbols))
 
 
-def get_trading_days(client: AlpacaClient, center_date: date, days_before: int = 10, days_after: int = 10) -> List[date]:
+def get_trading_days(
+    client: AlpacaClient, center_date: date, days_before: int = 10, days_after: int = 10
+) -> List[date]:
     start = center_date - timedelta(days=days_before)
     end = center_date + timedelta(days=days_after)
     try:
@@ -95,7 +97,7 @@ def get_trading_days(client: AlpacaClient, center_date: date, days_before: int =
         calendar = trading_client.get_calendar(start=start.isoformat(), end=end.isoformat())
     dates: List[date] = []
     for item in calendar if isinstance(calendar, list) else []:
-        raw = item.get('date')
+        raw = item.get("date")
         if raw:
             dates.append(date.fromisoformat(str(raw)))
     return sorted(set(dates))
@@ -104,14 +106,14 @@ def get_trading_days(client: AlpacaClient, center_date: date, days_before: int =
 def get_previous_trading_day(client: AlpacaClient, trade_date: date) -> date:
     dates = [d for d in get_trading_days(client, trade_date, days_before=15, days_after=0) if d < trade_date]
     if not dates:
-        raise ValueError(f'No previous trading day found for {trade_date}')
+        raise ValueError(f"No previous trading day found for {trade_date}")
     return dates[-1]
 
 
 def get_next_trading_day(client: AlpacaClient, anchor_date: date) -> date:
     dates = [d for d in get_trading_days(client, anchor_date, days_before=0, days_after=15) if d > anchor_date]
     if not dates:
-        raise ValueError(f'No next trading day found after {anchor_date}')
+        raise ValueError(f"No next trading day found after {anchor_date}")
     return dates[0]
 
 

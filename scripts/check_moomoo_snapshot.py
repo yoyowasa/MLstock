@@ -9,6 +9,7 @@ Usage:
   python scripts/check_moomoo_snapshot.py
   python scripts/check_moomoo_snapshot.py --host 127.0.0.1 --port 11111
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,6 +28,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
         try:
@@ -69,11 +71,20 @@ def main() -> None:
 
         # 主要カラムだけ表示
         cols = [
-            "code", "update_time",
-            "last_price", "open_price", "high_price", "low_price",
-            "prev_close_price", "volume", "turnover",
-            "amplitude", "price_change", "change_rate",
-            "suspension", "list_time",
+            "code",
+            "update_time",
+            "last_price",
+            "open_price",
+            "high_price",
+            "low_price",
+            "prev_close_price",
+            "volume",
+            "turnover",
+            "amplitude",
+            "price_change",
+            "change_rate",
+            "suspension",
+            "list_time",
         ]
         available_cols = [c for c in cols if c in data.columns]
         print(data[available_cols].to_string(index=False))
@@ -84,7 +95,13 @@ def main() -> None:
         out_path = f"artifacts/coverage/moomoo_snapshot_{ts}.json"
         records = data.to_dict(orient="records")
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump({"ts_utc": datetime.now(timezone.utc).isoformat(), "rows": records}, f, ensure_ascii=False, indent=2, default=str)
+            json.dump(
+                {"ts_utc": datetime.now(timezone.utc).isoformat(), "rows": records},
+                f,
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
         print(f"[saved] {out_path}")
 
     finally:

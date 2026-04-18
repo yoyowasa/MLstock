@@ -10,6 +10,7 @@ Usage:
   python scripts/check_moomoo_kline.py
   python scripts/check_moomoo_kline.py --code US.AAPL --bars 10
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,6 +30,7 @@ def _parse_args() -> argparse.Namespace:
 
 def _check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(timeout)
         try:
@@ -76,7 +78,9 @@ def main() -> None:
         print(f"[OK] get_cur_kline rows: {len(data)}")
         print()
 
-        cols = [c for c in ["code", "time_key", "open", "high", "low", "close", "volume", "turnover"] if c in data.columns]
+        cols = [
+            c for c in ["code", "time_key", "open", "high", "low", "close", "volume", "turnover"] if c in data.columns
+        ]
         print(data[cols].to_string(index=False))
         print()
 
@@ -85,7 +89,13 @@ def main() -> None:
         out_path = f"artifacts/coverage/moomoo_kline1m_{ts}.json"
         records = data.to_dict(orient="records")
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump({"ts_utc": datetime.now(timezone.utc).isoformat(), "code": args.code, "rows": records}, f, ensure_ascii=False, indent=2, default=str)
+            json.dump(
+                {"ts_utc": datetime.now(timezone.utc).isoformat(), "code": args.code, "rows": records},
+                f,
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
         print(f"[saved] {out_path}")
 
     finally:

@@ -87,7 +87,11 @@ def _daily_watchlist_rows(
     rel_vol_prev = float(latest["volume"]) / avg_volume_20 if avg_volume_20 > 0 else 0.0
     day_range = float(latest["high"]) - float(latest["low"])
     close_in_range_prev = (float(latest["close"]) - float(latest["low"])) / day_range if day_range > 0 else 0.0
-    oc_ret_prev = (float(latest["close"]) - float(latest["open"])) / float(latest["open"]) * 100.0 if float(latest["open"]) > 0 else 0.0
+    oc_ret_prev = (
+        (float(latest["close"]) - float(latest["open"])) / float(latest["open"]) * 100.0
+        if float(latest["open"]) > 0
+        else 0.0
+    )
     if not (cfg.universe.min_close <= close_d1 <= cfg.universe.max_close):
         return None
     if avg_volume_20 < cfg.universe.min_avg_volume_20 or avg_dollar_volume_20 < cfg.universe.min_avg_dollar_volume_20:
@@ -124,7 +128,9 @@ def analyze_watchlist_regime(
 
     universe = load_seed_symbols()
     daily_df = _build_daily_frame(universe, start_date, actual_end_date)
-    grouped_daily = {symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")}
+    grouped_daily = {
+        symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")
+    }
     profiles_df = _build_symbol_profiles(universe, set(universe), reports_dir() / "symbol_profiles_cache.csv")
     profiles_map = {row["symbol"]: row for row in profiles_df.to_dict(orient="records")}
 
@@ -177,9 +183,7 @@ def analyze_watchlist_regime(
             intraday_high_ret_from_open = (high_d - open_d) / open_d * 100.0 if open_d > 0 else None
             intraday_low_ret_from_open = (low_d - open_d) / open_d * 100.0 if open_d > 0 else None
             regime_label = (
-                "regime_a_open_above_prev_close"
-                if open_d > close_prev
-                else "regime_b_open_at_or_below_prev_close"
+                "regime_a_open_above_prev_close" if open_d > close_prev else "regime_b_open_at_or_below_prev_close"
             )
 
             first5_open = agg["first5_open"] if agg else None
@@ -188,20 +192,14 @@ def analyze_watchlist_regime(
             first5_close = agg["first5_close"] if agg else None
             first5_volume = agg["first5_volume"] if agg else None
             first5_oc_ret = (
-                (first5_close - first5_open) / first5_open * 100.0
-                if agg and first5_open and first5_open > 0
-                else None
+                (first5_close - first5_open) / first5_open * 100.0 if agg and first5_open and first5_open > 0 else None
             )
             first5_range = (first5_high - first5_low) if agg else None
             first5_range_pos = (
-                (first5_close - first5_low) / first5_range
-                if agg and first5_range and first5_range > 0
-                else None
+                (first5_close - first5_low) / first5_range if agg and first5_range and first5_range > 0 else None
             )
             close_vs_vwap = (
-                (first5_close / agg["vwap"] - 1.0) * 100.0
-                if agg and agg["vwap"] and agg["vwap"] > 0
-                else None
+                (first5_close / agg["vwap"] - 1.0) * 100.0 if agg and agg["vwap"] and agg["vwap"] > 0 else None
             )
             first5_pace = (
                 (first5_volume * 78.0) / float(ctx["avg_volume_20"])
@@ -224,7 +222,9 @@ def analyze_watchlist_regime(
                 and close_vs_vwap >= (strategy_cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
             )
 
-            post_0935 = [row for row in minute_rows if (row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35)]
+            post_0935 = [
+                row for row in minute_rows if (row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35)
+            ]
             reclaim_prev_close = any(row["close"] >= close_prev for row in post_0935)
             reclaim_vwap = False
             cumulative_pv = 0.0
@@ -236,7 +236,9 @@ def analyze_watchlist_regime(
                 if row in post_0935 and row["close"] >= intraday_vwap:
                     reclaim_vwap = True
                     break
-            reclaim_first5_high = bool(first5_high is not None and any(row["close"] >= first5_high for row in post_0935))
+            reclaim_first5_high = bool(
+                first5_high is not None and any(row["close"] >= first5_high for row in post_0935)
+            )
             reclaim_branch_candidate = bool(
                 open_d <= close_prev and (reclaim_prev_close or reclaim_vwap or reclaim_first5_high)
             )
@@ -303,8 +305,12 @@ def analyze_watchlist_regime(
                 "count": int(len(subset)),
                 "avg_day_oc_ret": float(subset["day_oc_ret"].mean()) if not subset.empty else None,
                 "win_rate": float((subset["day_oc_ret"] > 0).mean()) if not subset.empty else None,
-                "avg_intraday_high_ret_from_open": float(subset["intraday_high_ret_from_open"].mean()) if not subset.empty else None,
-                "avg_intraday_low_ret_from_open": float(subset["intraday_low_ret_from_open"].mean()) if not subset.empty else None,
+                "avg_intraday_high_ret_from_open": (
+                    float(subset["intraday_high_ret_from_open"].mean()) if not subset.empty else None
+                ),
+                "avg_intraday_low_ret_from_open": (
+                    float(subset["intraday_low_ret_from_open"].mean()) if not subset.empty else None
+                ),
             }
         )
     branch_compare_df = pd.DataFrame(branch_rows)

@@ -20,6 +20,7 @@ Usage:
 
 前提: OpenD が 127.0.0.1:11111 で起動済み
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,58 +47,58 @@ UTC = ZoneInfo("UTC")
 # ---------------------------------------------------------------------------
 BASKET: List[Dict[str, str]] = [
     # --- large-cap (15) ---
-    {"symbol": "AAPL",  "cap": "large", "exchange": "NASDAQ", "name": "Apple"},
-    {"symbol": "MSFT",  "cap": "large", "exchange": "NASDAQ", "name": "Microsoft"},
-    {"symbol": "NVDA",  "cap": "large", "exchange": "NASDAQ", "name": "NVIDIA"},
-    {"symbol": "AMZN",  "cap": "large", "exchange": "NASDAQ", "name": "Amazon"},
+    {"symbol": "AAPL", "cap": "large", "exchange": "NASDAQ", "name": "Apple"},
+    {"symbol": "MSFT", "cap": "large", "exchange": "NASDAQ", "name": "Microsoft"},
+    {"symbol": "NVDA", "cap": "large", "exchange": "NASDAQ", "name": "NVIDIA"},
+    {"symbol": "AMZN", "cap": "large", "exchange": "NASDAQ", "name": "Amazon"},
     {"symbol": "GOOGL", "cap": "large", "exchange": "NASDAQ", "name": "Alphabet A"},
-    {"symbol": "META",  "cap": "large", "exchange": "NASDAQ", "name": "Meta"},
-    {"symbol": "TSLA",  "cap": "large", "exchange": "NASDAQ", "name": "Tesla"},
-    {"symbol": "JPM",   "cap": "large", "exchange": "NYSE",   "name": "JPMorgan"},
-    {"symbol": "XOM",   "cap": "large", "exchange": "NYSE",   "name": "Exxon"},
-    {"symbol": "JNJ",   "cap": "large", "exchange": "NYSE",   "name": "J&J"},
-    {"symbol": "WMT",   "cap": "large", "exchange": "NYSE",   "name": "Walmart"},
-    {"symbol": "BAC",   "cap": "large", "exchange": "NYSE",   "name": "BofA"},
-    {"symbol": "GS",    "cap": "large", "exchange": "NYSE",   "name": "Goldman"},
-    {"symbol": "UNH",   "cap": "large", "exchange": "NYSE",   "name": "UnitedHealth"},
-    {"symbol": "HD",    "cap": "large", "exchange": "NYSE",   "name": "Home Depot"},
+    {"symbol": "META", "cap": "large", "exchange": "NASDAQ", "name": "Meta"},
+    {"symbol": "TSLA", "cap": "large", "exchange": "NASDAQ", "name": "Tesla"},
+    {"symbol": "JPM", "cap": "large", "exchange": "NYSE", "name": "JPMorgan"},
+    {"symbol": "XOM", "cap": "large", "exchange": "NYSE", "name": "Exxon"},
+    {"symbol": "JNJ", "cap": "large", "exchange": "NYSE", "name": "J&J"},
+    {"symbol": "WMT", "cap": "large", "exchange": "NYSE", "name": "Walmart"},
+    {"symbol": "BAC", "cap": "large", "exchange": "NYSE", "name": "BofA"},
+    {"symbol": "GS", "cap": "large", "exchange": "NYSE", "name": "Goldman"},
+    {"symbol": "UNH", "cap": "large", "exchange": "NYSE", "name": "UnitedHealth"},
+    {"symbol": "HD", "cap": "large", "exchange": "NYSE", "name": "Home Depot"},
     # --- mid-cap (20) ---
-    {"symbol": "AMD",   "cap": "mid",   "exchange": "NASDAQ", "name": "AMD"},
-    {"symbol": "PLTR",  "cap": "mid",   "exchange": "NASDAQ", "name": "Palantir"},
-    {"symbol": "SNAP",  "cap": "mid",   "exchange": "NYSE",   "name": "Snap"},
-    {"symbol": "SOFI",  "cap": "mid",   "exchange": "NASDAQ", "name": "SoFi"},
-    {"symbol": "RIVN",  "cap": "mid",   "exchange": "NASDAQ", "name": "Rivian"},
-    {"symbol": "LCID",  "cap": "mid",   "exchange": "NASDAQ", "name": "Lucid"},
-    {"symbol": "HOOD",  "cap": "mid",   "exchange": "NASDAQ", "name": "Robinhood"},
-    {"symbol": "AFRM",  "cap": "mid",   "exchange": "NASDAQ", "name": "Affirm"},
-    {"symbol": "ALLY",  "cap": "mid",   "exchange": "NYSE",   "name": "Ally Financial"},
-    {"symbol": "CCL",   "cap": "mid",   "exchange": "NYSE",   "name": "Carnival"},
-    {"symbol": "CUK",   "cap": "mid",   "exchange": "NYSE",   "name": "Carnival UK"},
-    {"symbol": "F",     "cap": "mid",   "exchange": "NYSE",   "name": "Ford"},
-    {"symbol": "GM",    "cap": "mid",   "exchange": "NYSE",   "name": "GM"},
-    {"symbol": "UBER",  "cap": "mid",   "exchange": "NYSE",   "name": "Uber"},
-    {"symbol": "LYFT",  "cap": "mid",   "exchange": "NASDAQ", "name": "Lyft"},
-    {"symbol": "DASH",  "cap": "mid",   "exchange": "NYSE",   "name": "DoorDash"},
-    {"symbol": "COIN",  "cap": "mid",   "exchange": "NASDAQ", "name": "Coinbase"},
-    {"symbol": "MARA",  "cap": "mid",   "exchange": "NASDAQ", "name": "Marathon Digital"},
-    {"symbol": "RIOT",  "cap": "mid",   "exchange": "NASDAQ", "name": "Riot Platforms"},
-    {"symbol": "APTV",  "cap": "mid",   "exchange": "NYSE",   "name": "Aptiv"},
+    {"symbol": "AMD", "cap": "mid", "exchange": "NASDAQ", "name": "AMD"},
+    {"symbol": "PLTR", "cap": "mid", "exchange": "NASDAQ", "name": "Palantir"},
+    {"symbol": "SNAP", "cap": "mid", "exchange": "NYSE", "name": "Snap"},
+    {"symbol": "SOFI", "cap": "mid", "exchange": "NASDAQ", "name": "SoFi"},
+    {"symbol": "RIVN", "cap": "mid", "exchange": "NASDAQ", "name": "Rivian"},
+    {"symbol": "LCID", "cap": "mid", "exchange": "NASDAQ", "name": "Lucid"},
+    {"symbol": "HOOD", "cap": "mid", "exchange": "NASDAQ", "name": "Robinhood"},
+    {"symbol": "AFRM", "cap": "mid", "exchange": "NASDAQ", "name": "Affirm"},
+    {"symbol": "ALLY", "cap": "mid", "exchange": "NYSE", "name": "Ally Financial"},
+    {"symbol": "CCL", "cap": "mid", "exchange": "NYSE", "name": "Carnival"},
+    {"symbol": "CUK", "cap": "mid", "exchange": "NYSE", "name": "Carnival UK"},
+    {"symbol": "F", "cap": "mid", "exchange": "NYSE", "name": "Ford"},
+    {"symbol": "GM", "cap": "mid", "exchange": "NYSE", "name": "GM"},
+    {"symbol": "UBER", "cap": "mid", "exchange": "NYSE", "name": "Uber"},
+    {"symbol": "LYFT", "cap": "mid", "exchange": "NASDAQ", "name": "Lyft"},
+    {"symbol": "DASH", "cap": "mid", "exchange": "NYSE", "name": "DoorDash"},
+    {"symbol": "COIN", "cap": "mid", "exchange": "NASDAQ", "name": "Coinbase"},
+    {"symbol": "MARA", "cap": "mid", "exchange": "NASDAQ", "name": "Marathon Digital"},
+    {"symbol": "RIOT", "cap": "mid", "exchange": "NASDAQ", "name": "Riot Platforms"},
+    {"symbol": "APTV", "cap": "mid", "exchange": "NYSE", "name": "Aptiv"},
     # --- small-cap (15) ---
-    {"symbol": "AAL",   "cap": "small", "exchange": "NASDAQ", "name": "American Airlines"},
-    {"symbol": "ASST",  "cap": "small", "exchange": "NYSE",   "name": "Asset Entities"},
-    {"symbol": "WKHS",  "cap": "small", "exchange": "NASDAQ", "name": "Workhorse"},
-    {"symbol": "HIMS",  "cap": "small", "exchange": "NYSE",   "name": "Hims & Hers"},
-    {"symbol": "SPCE",  "cap": "small", "exchange": "NYSE",   "name": "Virgin Galactic"},
-    {"symbol": "NKLA",  "cap": "small", "exchange": "NASDAQ", "name": "Nikola"},
-    {"symbol": "OPEN",  "cap": "small", "exchange": "NASDAQ", "name": "Opendoor"},
-    {"symbol": "BKKT",  "cap": "small", "exchange": "NASDAQ", "name": "Bakkt"},
-    {"symbol": "OPAD",  "cap": "small", "exchange": "NASDAQ", "name": "Offerpad"},
-    {"symbol": "GREE",  "cap": "small", "exchange": "NASDAQ", "name": "Greenidge Gen"},
-    {"symbol": "IMNM",  "cap": "small", "exchange": "NASDAQ", "name": "Immunome"},
-    {"symbol": "SNDL",  "cap": "small", "exchange": "NASDAQ", "name": "SNDL Inc"},
-    {"symbol": "CLOV",  "cap": "small", "exchange": "NASDAQ", "name": "Clover Health"},
-    {"symbol": "SKLZ",  "cap": "small", "exchange": "NASDAQ", "name": "Skillz"},
-    {"symbol": "XELA",  "cap": "small", "exchange": "NASDAQ", "name": "Xerox Holdings alt"},
+    {"symbol": "AAL", "cap": "small", "exchange": "NASDAQ", "name": "American Airlines"},
+    {"symbol": "ASST", "cap": "small", "exchange": "NYSE", "name": "Asset Entities"},
+    {"symbol": "WKHS", "cap": "small", "exchange": "NASDAQ", "name": "Workhorse"},
+    {"symbol": "HIMS", "cap": "small", "exchange": "NYSE", "name": "Hims & Hers"},
+    {"symbol": "SPCE", "cap": "small", "exchange": "NYSE", "name": "Virgin Galactic"},
+    {"symbol": "NKLA", "cap": "small", "exchange": "NASDAQ", "name": "Nikola"},
+    {"symbol": "OPEN", "cap": "small", "exchange": "NASDAQ", "name": "Opendoor"},
+    {"symbol": "BKKT", "cap": "small", "exchange": "NASDAQ", "name": "Bakkt"},
+    {"symbol": "OPAD", "cap": "small", "exchange": "NASDAQ", "name": "Offerpad"},
+    {"symbol": "GREE", "cap": "small", "exchange": "NASDAQ", "name": "Greenidge Gen"},
+    {"symbol": "IMNM", "cap": "small", "exchange": "NASDAQ", "name": "Immunome"},
+    {"symbol": "SNDL", "cap": "small", "exchange": "NASDAQ", "name": "SNDL Inc"},
+    {"symbol": "CLOV", "cap": "small", "exchange": "NASDAQ", "name": "Clover Health"},
+    {"symbol": "SKLZ", "cap": "small", "exchange": "NASDAQ", "name": "Skillz"},
+    {"symbol": "XELA", "cap": "small", "exchange": "NASDAQ", "name": "Xerox Holdings alt"},
 ]
 
 assert len(BASKET) == 50, f"basket size = {len(BASKET)}"
@@ -106,6 +107,7 @@ assert len(BASKET) == 50, f"basket size = {len(BASKET)}"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _check_opend(host: str, port: int, timeout: float = 3.0) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -123,12 +125,13 @@ def _iso_utc(dt: datetime) -> str:
 
 def _chunk(items, size):
     for i in range(0, len(items), size):
-        yield items[i: i + size]
+        yield items[i : i + size]
 
 
 # ---------------------------------------------------------------------------
 # moomoo snapshot probe
 # ---------------------------------------------------------------------------
+
 
 def probe_snapshot(
     quote_ctx: Any,
@@ -136,6 +139,7 @@ def probe_snapshot(
 ) -> Dict[str, Dict[str, Any]]:
     """symbol -> snapshot row dict. Per-symbol fallback on batch error."""
     import moomoo as ft
+
     result: Dict[str, Dict[str, Any]] = {}
 
     def _try(codes: List[str]) -> bool:
@@ -157,6 +161,7 @@ def probe_snapshot(
 # ---------------------------------------------------------------------------
 # moomoo K_1M probe
 # ---------------------------------------------------------------------------
+
 
 def probe_kline(
     quote_ctx: Any,
@@ -188,25 +193,37 @@ def probe_kline(
         )
         if ret != 0:
             result[sym] = {
-                "ok": False, "bars": 0,
+                "ok": False,
+                "bars": 0,
                 "error": str(kdata)[:120],
-                "first_time_key": None, "last_time_key": None,
-                "open_avail": False, "close_avail": False, "volume_avail": False,
+                "first_time_key": None,
+                "last_time_key": None,
+                "open_avail": False,
+                "close_avail": False,
+                "volume_avail": False,
             }
             continue
         if kdata is None or kdata.empty:
             result[sym] = {
-                "ok": False, "bars": 0, "error": "empty",
-                "first_time_key": None, "last_time_key": None,
-                "open_avail": False, "close_avail": False, "volume_avail": False,
+                "ok": False,
+                "bars": 0,
+                "error": "empty",
+                "first_time_key": None,
+                "last_time_key": None,
+                "open_avail": False,
+                "close_avail": False,
+                "volume_avail": False,
             }
             continue
         n = len(kdata)
         first_t = str(kdata["time_key"].iloc[0]) if "time_key" in kdata.columns else None
         last_t = str(kdata["time_key"].iloc[-1]) if "time_key" in kdata.columns else None
         result[sym] = {
-            "ok": True, "bars": n, "error": None,
-            "first_time_key": first_t, "last_time_key": last_t,
+            "ok": True,
+            "bars": n,
+            "error": None,
+            "first_time_key": first_t,
+            "last_time_key": last_t,
             "open_avail": "open" in kdata.columns and kdata["open"].notna().any(),
             "close_avail": "close" in kdata.columns and kdata["close"].notna().any(),
             "volume_avail": "volume" in kdata.columns and kdata["volume"].notna().any(),
@@ -218,6 +235,7 @@ def probe_kline(
 # Alpaca IEX probe
 # ---------------------------------------------------------------------------
 
+
 def probe_alpaca(
     symbols: List[str],
     kline_date: date,
@@ -228,6 +246,7 @@ def probe_alpaca(
     """symbol -> alpaca probe result dict."""
     from mlstock.data.alpaca.client import AlpacaClient
     from mlstock.config.loader import load_config
+
     cfg = load_config(ROOT / "config" / "config.yaml")
     client = AlpacaClient.from_env(cfg.alpaca.data_base_url)
 
@@ -251,7 +270,8 @@ def probe_alpaca(
                 result[sym] = {"ok": False, "bars": 0, "first_time_key": None, "last_time_key": None}
             else:
                 result[sym] = {
-                    "ok": True, "bars": len(sym_bars),
+                    "ok": True,
+                    "bars": len(sym_bars),
                     "first_time_key": sym_bars[0].get("t"),
                     "last_time_key": sym_bars[-1].get("t"),
                 }
@@ -261,6 +281,7 @@ def probe_alpaca(
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
+
 
 def _pct(n: int, d: int) -> str:
     return f"{n/d*100:.1f}%" if d else "n/a"
@@ -302,14 +323,23 @@ def build_result_df(
         else:
             verdict = "BOTH_FAIL"
 
-        rows.append({
-            "symbol": sym, "cap": cap, "exchange": exch,
-            "snap_ok": snap_ok, "snap_open": snap_open, "snap_update": snap_update,
-            "kline_ok": kline_ok, "kline_bars": kline_bars, "kline_first": kline_first,
-            "kline_err": kline_err,
-            "ap_ok": ap_ok, "ap_bars": ap_bars,
-            "verdict": verdict,
-        })
+        rows.append(
+            {
+                "symbol": sym,
+                "cap": cap,
+                "exchange": exch,
+                "snap_ok": snap_ok,
+                "snap_open": snap_open,
+                "snap_update": snap_update,
+                "kline_ok": kline_ok,
+                "kline_bars": kline_bars,
+                "kline_first": kline_first,
+                "kline_err": kline_err,
+                "ap_ok": ap_ok,
+                "ap_bars": ap_bars,
+                "verdict": verdict,
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -334,7 +364,9 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
     print(f"  snapshot OK      : {snap_ok:3d} / {n} ({_pct(snap_ok, n)})")
     if kline_date:
         print(f"  K_1M OK          : {kline_ok:3d} / {n} ({_pct(kline_ok, n)})")
-        print(f"  both OK          : {both_ok:3d}   snap_only={snap_only}  kline_only={kline_only}  both_fail={both_fail}")
+        print(
+            f"  both OK          : {both_ok:3d}   snap_only={snap_only}  kline_only={kline_only}  both_fail={both_fail}"
+        )
     if alpaca_compare and ap_ok is not None:
         print(f"  Alpaca IEX OK    : {ap_ok:3d} / {n} ({_pct(ap_ok, n)})")
 
@@ -380,6 +412,7 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
             print("  エラーなし")
         else:
             from collections import Counter
+
             ctr: Counter = Counter()
             for err in err_df["kline_err"].fillna("empty"):
                 key = err[:60] if err else "empty"
@@ -409,13 +442,12 @@ def print_summary(df: pd.DataFrame, kline_date: Optional[date], alpaca_compare: 
 # main
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--kline-date", type=str, default=None,
-                   help="K_1M probe date YYYY-MM-DD (省略時は snapshot のみ)")
+    p.add_argument("--kline-date", type=str, default=None, help="K_1M probe date YYYY-MM-DD (省略時は snapshot のみ)")
     p.add_argument("--snapshot-only", action="store_true")
-    p.add_argument("--alpaca-compare", action="store_true",
-                   help="Alpaca IEX との比較も実施")
+    p.add_argument("--alpaca-compare", action="store_true", help="Alpaca IEX との比較も実施")
     p.add_argument("--alpaca-feed", default="iex")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=11111)
