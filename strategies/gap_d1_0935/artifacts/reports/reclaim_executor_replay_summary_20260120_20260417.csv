@@ -1,0 +1,4 @@
+branch,trade_days,candidate_count,gate_pass_count,trigger_touch_count,entry_count,closed_trades,win_rate,realized_pnl_usd,realized_pnl_pct,avg_hold_min,no_trigger_count,invalid_risk_count,entry_window_closed_count,exit_reason_stop,exit_reason_target,exit_reason_time_exit
+continuation_compare,62,32,5,1,1,1,0.0,-42.98455846299956,-1.9986265973463941,355.0,4,0,0,0.0,0.0,1.0
+reclaim_first5_high,62,32,7,7,7,7,0.5714285714285714,148.49505027700076,0.9266244631345536,131.42857142857142,0,0,0,3.0,2.0,2.0
+reclaim_vwap,62,32,7,7,7,7,0.5714285714285714,250.96746050685863,1.1173588095449778,16.142857142857142,0,0,0,3.0,4.0,0.0

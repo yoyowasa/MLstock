@@ -1,0 +1,7 @@
+trade_date,branch,symbol,candidate_count,entry_count,closed_trades,win_rate,realized_pnl_usd,realized_pnl_pct,avg_hold_min,skip_reason,entry_price,stop_price,target_price,exit_price,exit_reason,qty,risk_per_share,mfe_pct,mae_pct,slippage_bps_per_side,fee_bps_round_trip,effective_stop_price
+2025-04-10,continuation_compare,AG,1,0,0,,,,,gate_fail,,,,,,,,,,,,
+2025-04-10,continuation_compare,ALK,1,0,0,,,,,gate_fail,,,,,,,,,,,,
+2025-04-10,reclaim_first5_high,AG,1,1,1,1.0,103.21410283799966,2.457233407105963,41.0,,5.88294,5.81,6.031689999999998,6.028674154999999,target,714.0,0.0700000000000002,4.709549986911315,-0.8998901909589346,5.0,2.0,5.807095
+2025-04-10,reclaim_first5_high,ALK,1,0,0,,,,,gate_fail,,,,,,,,,,,,
+2025-04-10,reclaim_vwap,AG,1,1,1,1.0,90.02882773606595,0.8998922433695234,0.0,,5.836873339905361,5.81,5.893513041535222,5.8905662850144545,target,1714.0,0.02395636172450022,5.535954633202267,-0.11775722214785568,5.0,2.0,5.807095
+2025-04-10,reclaim_vwap,ALK,1,0,0,,,,,gate_fail,,,,,,,,,,,,

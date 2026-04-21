@@ -41,6 +41,23 @@ class Day0Config:
 @dataclass(frozen=True)
 class RiskConfig:
     risk_per_trade_usd: float = 50.0
+    max_notional_per_trade_usd: float = 10000.0
+    min_order_qty: int = 1
+
+
+@dataclass(frozen=True)
+class StrategyBranchConfig:
+    main_branch: str = "reclaim_first5_high"
+    compare_branches: tuple[str, ...] = ("reclaim_vwap", "continuation_compare")
+
+
+@dataclass(frozen=True)
+class CostConfig:
+    slippage_bps_high_liquidity: float = 3.0
+    slippage_bps_mid_liquidity: float = 6.0
+    slippage_bps_low_liquidity: float = 10.0
+    slippage_bps_micro_liquidity: float = 15.0
+    fee_bps_round_trip: float = 2.0
 
 
 @dataclass(frozen=True)
@@ -49,6 +66,8 @@ class StrategyConfig:
     d1: D1Config
     day0: Day0Config
     risk: RiskConfig
+    strategy: StrategyBranchConfig
+    cost: CostConfig
 
 
 _DEF = StrategyConfig(
@@ -56,6 +75,8 @@ _DEF = StrategyConfig(
     d1=D1Config(),
     day0=Day0Config(),
     risk=RiskConfig(),
+    strategy=StrategyBranchConfig(),
+    cost=CostConfig(),
 )
 
 
@@ -73,9 +94,16 @@ def load_strategy_config(path: Path | None = None) -> StrategyConfig:
     d1_raw = raw.get("d1", {}) if isinstance(raw.get("d1"), dict) else {}
     day0_raw = raw.get("day0", {}) if isinstance(raw.get("day0"), dict) else {}
     risk_raw = raw.get("risk", {}) if isinstance(raw.get("risk"), dict) else {}
+    strategy_raw = raw.get("strategy", {}) if isinstance(raw.get("strategy"), dict) else {}
+    cost_raw = raw.get("cost", {}) if isinstance(raw.get("cost"), dict) else {}
+    compare_branches = strategy_raw.get("compare_branches")
+    if isinstance(compare_branches, list):
+        strategy_raw = {**strategy_raw, "compare_branches": tuple(str(x) for x in compare_branches)}
     return StrategyConfig(
         universe=UniverseConfig(**{**_DEF.universe.__dict__, **universe_raw}),
         d1=D1Config(**{**_DEF.d1.__dict__, **d1_raw}),
         day0=Day0Config(**{**_DEF.day0.__dict__, **day0_raw}),
         risk=RiskConfig(**{**_DEF.risk.__dict__, **risk_raw}),
+        strategy=StrategyBranchConfig(**{**_DEF.strategy.__dict__, **strategy_raw}),
+        cost=CostConfig(**{**_DEF.cost.__dict__, **cost_raw}),
     )

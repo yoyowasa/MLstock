@@ -19,6 +19,7 @@ from .paths import reports_dir
 class RegimeAnalysisResult:
     detail_path: Path
     summary_path: Path
+    trigger_summary_path: Path
     branch_compare_path: Path
     start_date: date
     end_date: date
@@ -63,6 +64,76 @@ def _valid_minute_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         except (TypeError, ValueError):
             continue
     return sorted(rows, key=lambda row: row["ts"])
+
+
+def _first_reclaim_row(
+    minute_rows: List[Dict[str, Any]],
+    level: float,
+    start_minute: int = 35,
+) -> Optional[Dict[str, Any]]:
+    for row in minute_rows:
+        if row["ts"].hour < 9 or (row["ts"].hour == 9 and row["ts"].minute < start_minute):
+            continue
+        if row["high"] >= level:
+            return row
+    return None
+
+
+def _intraday_vwap_series(minute_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    cumulative_pv = 0.0
+    cumulative_volume = 0.0
+    for row in minute_rows:
+        cumulative_pv += row["close"] * row["volume"]
+        cumulative_volume += row["volume"]
+        vwap = cumulative_pv / cumulative_volume if cumulative_volume > 0 else row["close"]
+        out.append({**row, "intraday_vwap": vwap})
+    return out
+
+
+def _simulate_trade_from_entry(
+    minute_rows: List[Dict[str, Any]],
+    entry_row: Optional[Dict[str, Any]],
+    entry_price: Optional[float],
+    stop_price: Optional[float],
+) -> Dict[str, Any]:
+    if entry_row is None or entry_price is None or stop_price is None or entry_price <= stop_price:
+        return {
+            "entry_time": None,
+            "entry_price": None,
+            "high_ret_from_entry": None,
+            "low_ret_from_entry": None,
+            "trade_ret": None,
+            "win": None,
+        }
+    post_entry = [row for row in minute_rows if row["ts"] >= entry_row["ts"]]
+    if not post_entry:
+        return {
+            "entry_time": entry_row["ts"].isoformat(),
+            "entry_price": entry_price,
+            "high_ret_from_entry": None,
+            "low_ret_from_entry": None,
+            "trade_ret": None,
+            "win": None,
+        }
+    risk = entry_price - stop_price
+    target_price = entry_price + 2.0 * risk
+    exit_price = post_entry[-1]["close"]
+    for row in post_entry:
+        if row["low"] <= stop_price:
+            exit_price = stop_price
+            break
+        if row["high"] >= target_price:
+            exit_price = target_price
+            break
+    return {
+        "entry_time": entry_row["ts"].isoformat(),
+        "entry_price": entry_price,
+        "high_ret_from_entry": max((row["high"] - entry_price) / entry_price * 100.0 for row in post_entry),
+        "low_ret_from_entry": min((row["low"] - entry_price) / entry_price * 100.0 for row in post_entry),
+        "trade_ret": (exit_price - entry_price) / entry_price * 100.0,
+        "win": exit_price > entry_price,
+    }
 
 
 def _daily_watchlist_rows(
@@ -170,6 +241,7 @@ def analyze_watchlist_regime(
             ctx = selected_ctx[symbol]
             day_bar = ctx["day_bar"]
             minute_rows = _valid_minute_rows(minute_map.get(symbol, []))
+            minute_rows_with_vwap = _intraday_vwap_series(minute_rows)
             inspection = _inspect_first5_window(symbol, minute_map.get(symbol, []))
             agg = inspection.get("aggregate")
 
@@ -226,21 +298,59 @@ def analyze_watchlist_regime(
                 row for row in minute_rows if (row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35)
             ]
             reclaim_prev_close = any(row["close"] >= close_prev for row in post_0935)
-            reclaim_vwap = False
-            cumulative_pv = 0.0
-            cumulative_volume = 0.0
-            for row in minute_rows:
-                cumulative_pv += row["close"] * row["volume"]
-                cumulative_volume += row["volume"]
-                intraday_vwap = cumulative_pv / cumulative_volume if cumulative_volume > 0 else row["close"]
-                if row in post_0935 and row["close"] >= intraday_vwap:
-                    reclaim_vwap = True
-                    break
+            reclaim_vwap = any(
+                ((row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35))
+                and row["close"] >= row["intraday_vwap"]
+                for row in minute_rows_with_vwap
+            )
             reclaim_first5_high = bool(
                 first5_high is not None and any(row["close"] >= first5_high for row in post_0935)
             )
             reclaim_branch_candidate = bool(
                 open_d <= close_prev and (reclaim_prev_close or reclaim_vwap or reclaim_first5_high)
+            )
+
+            reclaim_v01_gate = bool(
+                regime_label == "regime_b_open_at_or_below_prev_close"
+                and first5_range_pos is not None
+                and first5_range_pos >= 0.50
+                and first5_pace is not None
+                and first5_pace >= 1.0
+                and close_vs_vwap is not None
+                and close_vs_vwap >= 0.0
+            )
+            stop_price = first5_low if first5_low is not None else None
+            prev_close_entry_row = _first_reclaim_row(minute_rows, close_prev) if reclaim_v01_gate else None
+            first5_high_entry_row = _first_reclaim_row(minute_rows, first5_high) if (reclaim_v01_gate and first5_high is not None) else None
+            vwap_entry_row = None
+            if reclaim_v01_gate:
+                for row in minute_rows_with_vwap:
+                    if ((row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35)) and row["high"] >= row["intraday_vwap"]:
+                        vwap_entry_row = row
+                        break
+            prev_close_trade = _simulate_trade_from_entry(
+                minute_rows,
+                prev_close_entry_row,
+                close_prev if prev_close_entry_row is not None else None,
+                stop_price,
+            )
+            first5_high_trade = _simulate_trade_from_entry(
+                minute_rows,
+                first5_high_entry_row,
+                first5_high if first5_high_entry_row is not None else None,
+                stop_price,
+            )
+            vwap_trade = _simulate_trade_from_entry(
+                minute_rows,
+                vwap_entry_row,
+                float(vwap_entry_row["intraday_vwap"]) if vwap_entry_row is not None else None,
+                stop_price,
+            )
+            continuation_trade = _simulate_trade_from_entry(
+                minute_rows,
+                {"ts": post_0935[0]["ts"]} if continuation_pass and post_0935 else None,
+                first5_high if continuation_pass and first5_high is not None else None,
+                stop_price,
             )
 
             detail_rows.append(
@@ -267,6 +377,23 @@ def analyze_watchlist_regime(
                     "reclaim_vwap": reclaim_vwap,
                     "reclaim_first5_high": reclaim_first5_high,
                     "reclaim_branch_candidate": reclaim_branch_candidate,
+                    "reclaim_v01_gate": reclaim_v01_gate,
+                    "prev_close_reclaim_trade_ret": prev_close_trade["trade_ret"],
+                    "prev_close_reclaim_high_ret_from_entry_proxy": prev_close_trade["high_ret_from_entry"],
+                    "prev_close_reclaim_low_ret_from_entry_proxy": prev_close_trade["low_ret_from_entry"],
+                    "prev_close_reclaim_win": prev_close_trade["win"],
+                    "vwap_reclaim_trade_ret": vwap_trade["trade_ret"],
+                    "vwap_reclaim_high_ret_from_entry_proxy": vwap_trade["high_ret_from_entry"],
+                    "vwap_reclaim_low_ret_from_entry_proxy": vwap_trade["low_ret_from_entry"],
+                    "vwap_reclaim_win": vwap_trade["win"],
+                    "first5_high_reclaim_trade_ret": first5_high_trade["trade_ret"],
+                    "first5_high_reclaim_high_ret_from_entry_proxy": first5_high_trade["high_ret_from_entry"],
+                    "first5_high_reclaim_low_ret_from_entry_proxy": first5_high_trade["low_ret_from_entry"],
+                    "first5_high_reclaim_win": first5_high_trade["win"],
+                    "continuation_compare_trade_ret": continuation_trade["trade_ret"],
+                    "continuation_compare_high_ret_from_entry_proxy": continuation_trade["high_ret_from_entry"],
+                    "continuation_compare_low_ret_from_entry_proxy": continuation_trade["low_ret_from_entry"],
+                    "continuation_compare_win": continuation_trade["win"],
                 }
             )
 
@@ -293,24 +420,43 @@ def analyze_watchlist_regime(
         .reset_index()
     )
 
+    reclaim_gate_df = detail_df[detail_df["reclaim_v01_gate"].fillna(False)].copy()
+    trigger_rows = []
+    for label, ret_col, win_col, high_col, low_col in [
+        ("prev_close_reclaim", "prev_close_reclaim_trade_ret", "prev_close_reclaim_win", "prev_close_reclaim_high_ret_from_entry_proxy", "prev_close_reclaim_low_ret_from_entry_proxy"),
+        ("vwap_reclaim", "vwap_reclaim_trade_ret", "vwap_reclaim_win", "vwap_reclaim_high_ret_from_entry_proxy", "vwap_reclaim_low_ret_from_entry_proxy"),
+        ("first5_high_reclaim", "first5_high_reclaim_trade_ret", "first5_high_reclaim_win", "first5_high_reclaim_high_ret_from_entry_proxy", "first5_high_reclaim_low_ret_from_entry_proxy"),
+    ]:
+        subset = reclaim_gate_df[reclaim_gate_df[ret_col].notna()].copy()
+        trigger_rows.append(
+            {
+                "trigger_label": label,
+                "count": int(len(subset)),
+                "avg_day_oc_ret": float(subset["day_oc_ret"].mean()) if not subset.empty else None,
+                "win_rate": float(subset[win_col].mean()) if not subset.empty else None,
+                "avg_intraday_high_ret_from_entry_proxy": float(subset[high_col].mean()) if not subset.empty else None,
+                "avg_intraday_low_ret_from_entry_proxy": float(subset[low_col].mean()) if not subset.empty else None,
+                "avg_trade_ret": float(subset[ret_col].mean()) if not subset.empty else None,
+            }
+        )
+    trigger_summary_df = pd.DataFrame(trigger_rows)
+
     branch_rows = []
-    for label, mask in {
-        "continuation_branch": detail_df["continuation_pass"].fillna(False),
-        "reclaim_branch": detail_df["reclaim_branch_candidate"].fillna(False),
-    }.items():
-        subset = detail_df[mask].copy()
+    for label, source_df, mask_col, ret_col, win_col, high_col, low_col in [
+        ("reclaim_v01_prev_close", reclaim_gate_df, "prev_close_reclaim_trade_ret", "prev_close_reclaim_trade_ret", "prev_close_reclaim_win", "prev_close_reclaim_high_ret_from_entry_proxy", "prev_close_reclaim_low_ret_from_entry_proxy"),
+        ("reclaim_v01_first5_high", reclaim_gate_df, "first5_high_reclaim_trade_ret", "first5_high_reclaim_trade_ret", "first5_high_reclaim_win", "first5_high_reclaim_high_ret_from_entry_proxy", "first5_high_reclaim_low_ret_from_entry_proxy"),
+        ("continuation_compare", detail_df[detail_df["continuation_pass"].fillna(False)].copy(), "continuation_compare_trade_ret", "continuation_compare_trade_ret", "continuation_compare_win", "continuation_compare_high_ret_from_entry_proxy", "continuation_compare_low_ret_from_entry_proxy"),
+    ]:
+        subset = source_df[source_df[mask_col].notna()].copy()
         branch_rows.append(
             {
                 "branch_label": label,
                 "count": int(len(subset)),
                 "avg_day_oc_ret": float(subset["day_oc_ret"].mean()) if not subset.empty else None,
-                "win_rate": float((subset["day_oc_ret"] > 0).mean()) if not subset.empty else None,
-                "avg_intraday_high_ret_from_open": (
-                    float(subset["intraday_high_ret_from_open"].mean()) if not subset.empty else None
-                ),
-                "avg_intraday_low_ret_from_open": (
-                    float(subset["intraday_low_ret_from_open"].mean()) if not subset.empty else None
-                ),
+                "win_rate": float(subset[win_col].mean()) if not subset.empty else None,
+                "avg_intraday_high_ret_from_entry_proxy": float(subset[high_col].mean()) if not subset.empty else None,
+                "avg_intraday_low_ret_from_entry_proxy": float(subset[low_col].mean()) if not subset.empty else None,
+                "avg_trade_ret": float(subset[ret_col].mean()) if not subset.empty else None,
             }
         )
     branch_compare_df = pd.DataFrame(branch_rows)
@@ -319,9 +465,11 @@ def analyze_watchlist_regime(
     stamp = f"{start_date:%Y%m%d}_{actual_end_date:%Y%m%d}"
     detail_path = out_dir / f"regime_detail_{stamp}.csv"
     summary_path = out_dir / f"regime_summary_{stamp}.csv"
+    trigger_summary_path = out_dir / f"regime_trigger_summary_{stamp}.csv"
     branch_compare_path = out_dir / f"regime_branch_compare_{stamp}.csv"
     detail_df.to_csv(detail_path, index=False)
     summary_df.to_csv(summary_path, index=False)
+    trigger_summary_df.to_csv(trigger_summary_path, index=False)
     branch_compare_df.to_csv(branch_compare_path, index=False)
 
     log_event(
@@ -332,12 +480,14 @@ def analyze_watchlist_regime(
         trade_days=len(trade_dates),
         detail_path=str(detail_path),
         summary_path=str(summary_path),
+        trigger_summary_path=str(trigger_summary_path),
         branch_compare_path=str(branch_compare_path),
     )
 
     return RegimeAnalysisResult(
         detail_path=detail_path,
         summary_path=summary_path,
+        trigger_summary_path=trigger_summary_path,
         branch_compare_path=branch_compare_path,
         start_date=start_date,
         end_date=actual_end_date,

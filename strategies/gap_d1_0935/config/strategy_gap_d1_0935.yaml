@@ -23,3 +23,18 @@ day0:
 
 risk:
   risk_per_trade_usd: 50.0
+  max_notional_per_trade_usd: 10000.0
+  min_order_qty: 1
+
+strategy:
+  main_branch: reclaim_first5_high
+  compare_branches:
+    - reclaim_vwap
+    - continuation_compare
+
+cost:
+  slippage_bps_high_liquidity: 3.0
+  slippage_bps_mid_liquidity: 6.0
+  slippage_bps_low_liquidity: 10.0
+  slippage_bps_micro_liquidity: 15.0
+  fee_bps_round_trip: 2.0

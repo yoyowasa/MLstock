@@ -1,6 +1,6 @@
 # MLStock Project Status
 
-## 最終更新: 2026-04-18
+## 最終更新: 2026-04-21
 
 ### 2026-04-19 追記
 - 修正: `ruff check .` の単純 lint エラーを最小変更で整理した。対象は `scripts/check_moomoo_probe.py`, `scripts/compare_gap_scan_alpaca_vs_moomoo.py`, `scripts/compare_moomoo_alpaca_open.py`, `scripts/probe_moomoo_coverage_50.py`, `scripts/probe_universe_coverage.py`, `scripts/run_gap_scan_moomoo_932.py`, `src/mlstock/jobs/gap_scanner_moomoo_932.py`。
@@ -245,6 +245,18 @@ universe:
 - 2026-04-19: `gap_d1_0935` v1.6 の `gap_only_fail=7` の `gap_today_pct` は、指定帯で `0.0〜0.5%=1`, `0.5〜1.0%=0`, `1.0%以上=0`。残り 6件は `gap_today_pct < 0.0` で、次の主ボトルネックは「微弱ギャップ」よりも「前日終値割れ寄り」の扱いと判明した。
 - 2026-04-19: `gap_d1_0935` に D 当日寄りレジーム分析を追加した。`analysis_regime.py` / `scripts/analyze_gap_d1_regime.py` で D-1 watchlist 銘柄を `regime_a_open_above_prev_close` / `regime_b_open_at_or_below_prev_close` に分類し、日中成績と branch 比較 CSV を出力できるようにした。
 - 2026-04-19: 2026-01-14〜2026-04-17 の regime 分析では `regime_a=16`, `regime_b=17`。`regime_a` は `avg_day_oc_ret=-0.577%`, `win_rate=31.3%`, continuation pass 5件、`regime_b` は `avg_day_oc_ret=+0.421%`, `win_rate=58.8%`, reclaim branch 17件だった。continuation 単線より reclaim/reversal 系 branch の試作優先度が上がった。
+- 2026-04-19: `gap_d1_0935` の reclaim branch 試作を追加した。`regime B` を対象に `close_5m >= vwap`, `first5_range_pos >= 0.50`, `first5_pace >= 1.0` を gate とし、`prev_close reclaim` / `first5_high reclaim` / `vwap reclaim` を trigger 別に評価した。
+- 2026-04-19: `reclaim v0.1` 比較では `prev_close reclaim avg_trade_ret=+0.405%`, `first5_high reclaim avg_trade_ret=+0.907%`, `vwap reclaim avg_trade_ret=+1.053%`。比較用 `continuation_compare` は `avg_trade_ret=-3.626%, win_rate=0%` で明確に劣後した。現時点では continuation より reclaim branch を本線候補に置く根拠が強い。
+- 2026-04-21: `gap_d1_0935` に reclaim branch 用 executor/backtest を追加した。`reclaim_branch_backtest.py` / `run_reclaim_branch_backtest.py` で `reclaim_first5_high`, `reclaim_vwap`, `continuation_compare` を同期間・同 exit 条件で横並び比較できる。
+- 2026-04-21: `2026-01-14..2026-04-17` の backtest では `reclaim_first5_high avg_trade_ret=+1.054%, win_rate=57.1%`, `reclaim_vwap avg_trade_ret=+1.053%, win_rate=57.1%`, `continuation_compare avg_trade_ret=-0.668%, win_rate=33.3%`。本線候補は reclaim、continuation は compare branch として扱う方針を `STATUS` に固定した。
+- 2026-04-21: `gap_d1_0935` の reclaim backtest を `12か月` に延長し、`slippage 5bps/side + fee 2bps round-trip` を反映した。`2025-04-10..2026-04-17` の net return 比較では `reclaim_first5_high avg_trade_ret=+0.582%`, `reclaim_vwap avg_trade_ret=+0.839%`, `continuation_compare avg_trade_ret=-2.672%` で、コスト込みでも reclaim 優位を維持した。
+- 2026-04-21: `analysis_regime.py` の helper 重複を整理した。暫定本線は `reclaim_first5_high` 維持、`reclaim_vwap` は比較候補、`continuation_compare` は compare branch の位置付けで固定した。
+- 2026-04-21: `gap_d1_0935` は条件探索を止め、運用観測フェーズへ移行した。main=`reclaim_first5_high`, compare=`reclaim_vwap`, reference=`continuation_compare` を固定し、今後は dry-run 継続監視と gate_fail 常連銘柄観測を優先する。
+- 2026-04-21: `reclaim_executor.py` の `pd.concat` 由来 `FutureWarning` を局所 suppress し、出力互換を維持したまま 62営業日 replay を warning 無しで再生成できるようにした。
+- 2026-04-21: `2026-01-20..2026-04-17` の 62営業日 replay では `reclaim_first5_high trade_count=7, realized_pnl_usd=+148.50`, `reclaim_vwap trade_count=7, realized_pnl_usd=+250.97`, `continuation_compare trade_count=1, realized_pnl_usd=-42.98`。直近5営業日 `2026-04-13..2026-04-17` は全 branch `entry_count=0` を確認した。
+- 2026-04-21: 旧 gap 本線の定期タスク `MLStock_GapScan_093005`, `MLStock_GapDryRun_SkipOptions_Daily` を `Disabled` にした。`gap_d1_0935` 専用 daily 起動スクリプト [C:\BOT\MLStock\scripts\run_reclaim_executor_daily.ps1](C:\BOT\MLStock\scripts\run_reclaim_executor_daily.ps1) を追加し、3 branch の `--dry-run` を同一 trade date で順番実行する形にした。
+- 2026-04-21: `MLStock_GapD1_0935_DryRun_Daily` の新規 task 登録は `Register-ScheduledTask: アクセスが拒否されました` で未完。管理者権限の PowerShell で登録が必要。
+- 2026-04-21: 代替として `run_reclaim_executor_daily.ps1` を手動実行し、[C:\BOT\MLStock\strategies\gap_d1_0935\artifacts\reports\reclaim_executor_daily_20260421.csv](C:\BOT\MLStock\strategies\gap_d1_0935\artifacts\reports\reclaim_executor_daily_20260421.csv) と [C:\BOT\MLStock\strategies\gap_d1_0935\artifacts\reports\reclaim_branch_compare_20260421.csv](C:\BOT\MLStock\strategies\gap_d1_0935\artifacts\reports\reclaim_branch_compare_20260421.csv) の生成を確認した。結果は全 branch `candidate_count=0`, `skip_reason=no_candidates`。
 
 ### 次のアクション（Gap戦略）
 - 毎朝のスキャンログ確認（1日平均何銘柄が通過するか把握）
@@ -505,3 +517,12 @@ universe:
 - 2026-04-19: `strategies\\gap_d1_0935` に Phase 1 母数確認スクリプトを追加した。`analysis_phase1.py` / `analyze_phase1_population.py` で直近3か月の watchlist 件数、9:35 件数、drop counts、銘柄別理由、old broad gap との差分を `strategies\\gap_d1_0935\\artifacts\\reports` に出力する。結果は 65 営業日で `watchlist 1件 / 9:35 candidates 0件` と極端に少なく、主因は D-1 側の `price_fail` と `liquidity_fail`。
 - 2026-04-19: 別戦略 `strategies\\gap_d1_0935` を v1.1 条件へ緩和して再集計した。結果は 65 営業日で `watchlist_count 1->18`, `candidate_0935_count 0->2`。通過日は `2026-03-18 BTSG`, `2026-04-01 ALKS`。依然として old broad gap scanner との共通候補は 0 で、D-1 側の主な詰まりは `liquidity_fail`, `price_fail`, `gap_fail`。
 - 2026-04-19: 別戦略 `strategies\\gap_d1_0935` を v1.2 条件へ緩和して再集計した。結果は 65 営業日で `watchlist_count 18->83`, `candidate_0935_count 2->4`, `watchlist_zero_days 48->6`。一方で `scan_missing_first5 0->50` が増え、次の主ボトルネックは D-1 側より当日 9:35 判定側に移った。
+- 2026-04-21: `strategies\\gap_d1_0935` の `reclaim_executor.py` に backtest 合わせの cost/fill モデルを追加した。`entry/exit slippage`, `fee_bps_round_trip`, `time_exit` 名称を反映し、`run_reclaim_executor.py` から `--slippage-bps-per-side`, `--fee-bps-round-trip` を指定できるようにした。既定値は backtest script と同じ `5.0 / 2.0`。
+- 2026-04-21: `2025-04-10` で executor と backtest を再突合した。`reclaim_first5_high` は `entry_time`, `entry_price`, `exit_time`, `exit_price`, `exit_reason`, `pnl_pct` が一致、`reclaim_vwap` も同項目が一致した。残差分は `target_price` 列のみで、executor は `effective_entry/effective_stop` ベース、backtest CSV は `effective_entry/raw_stop` ベースで列化している差が残る。
+- 2026-04-21: `strategies\\gap_d1_0935` に 12か月 period replay を追加した。`run_reclaim_executor.py --branch all --months 12 --end-date 2026-04-17` で `reclaim_executor_replay_compare_*`, `reclaim_executor_replay_daily_*`, `reclaim_executor_replay_summary_*` を出力できる。
+- 2026-04-21: `2025-04-10..2026-04-17` の replay 集計では、候補発生日 107日 / candidate_count 145。`reclaim_first5_high entry_count=21, realized_pnl_usd=+502.44, realized_pnl_pct=+0.875`, `reclaim_vwap entry_count=26, realized_pnl_usd=+696.80, realized_pnl_pct=+0.910`, `continuation_compare entry_count=16, realized_pnl_usd=-127.79, realized_pnl_pct=-2.580`。reclaim 系が continuation compare を上回った。
+- 2026-04-21: `strategies\\gap_d1_0935` の `--from-scanner-csv` を single-day/period の両方で受けるように更新した。scan CSV が空でも空 report を正常生成する。現存の `gap_0935_candidates_20260417.csv` は header only で、scanner replay 結果も empty だった。
+- 2026-04-21: `strategies\\gap_d1_0935` の単日 executor は候補 0 日を error 扱いせず、`candidate_count=0` の日次サマリを出すように変更した。直近5営業日 `2026-04-13..2026-04-17` の dry-run では全 branch とも `candidate_count=2, entry_count=0, closed_trades=0, realized_pnl_usd=0` だった。
+- 2026-04-21: `strategies\\gap_d1_0935` は戦略選定フェーズを終了し、本線 `reclaim_first5_high`、compare `reclaim_vwap`、reference `continuation_compare` で固定した。以後は運用確認フェーズとして dry-run と理由集計を優先する。
+- 2026-04-21: `strategies\\gap_d1_0935` の直近20営業日 `2026-03-20..2026-04-17` dry-run では、`reclaim_first5_high candidate_count=7, gate_pass_count=1, trigger_touch_count=1, entry_count=1, realized_pnl_usd=+89.86`、`reclaim_vwap candidate_count=7, gate_pass_count=1, trigger_touch_count=1, entry_count=1, realized_pnl_usd=+101.91`、`continuation_compare candidate_count=7, gate_pass_count=2, trigger_touch_count=0, entry_count=0` だった。
+- 2026-04-21: `strategies\\gap_d1_0935` の `gate_fail` を branch 別・日次別・銘柄別に分解した。出力は `reclaim_executor_gate_fail_daily_20260320_20260417.csv`, `reclaim_executor_gate_fail_symbol_20260320_20260417.csv`。reclaim 2 branch は `regime_fail=4, pace_fail=3, range_fail=3, vwap_fail=2, compound_fail=4` で同値、`continuation_compare` は `pace_fail=4` が最多だった。

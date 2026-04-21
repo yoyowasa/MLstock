@@ -1,0 +1,4 @@
+trade_date,branch,candidate_count,entry_count,closed_trades,win_rate,realized_pnl_usd,realized_pnl_pct,avg_hold_min
+2026-04-17,reclaim_first5_high,0,0,0,,0.0,,
+2026-04-17,reclaim_vwap,0,0,0,,0.0,,
+2026-04-17,continuation_compare,0,0,0,,0.0,,

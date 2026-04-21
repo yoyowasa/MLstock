@@ -11,20 +11,27 @@ for path in [str(ROOT / "src"), str(STRATEGY_SRC)]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from gap_d1_0935.analysis_regime import analyze_watchlist_regime  # noqa: E402
+from gap_d1_0935.reclaim_branch_backtest import backtest_reclaim_branch  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--months", type=int, default=3)
+    parser.add_argument("--months", type=int, default=12)
     parser.add_argument("--end-date", type=date.fromisoformat, default=None)
+    parser.add_argument("--slippage-bps-per-side", type=float, default=5.0)
+    parser.add_argument("--fee-bps-round-trip", type=float, default=2.0)
     args = parser.parse_args()
-    result = analyze_watchlist_regime(months=args.months, end_date=args.end_date)
+    result = backtest_reclaim_branch(
+        months=args.months,
+        end_date=args.end_date,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        fee_bps_round_trip=args.fee_bps_round_trip,
+    )
     print(f"period={result.start_date}..{result.end_date} trade_days={result.trade_days}")
-    print(f"detail={result.detail_path}")
+    print(f"trades={result.trades_path}")
     print(f"summary={result.summary_path}")
-    print(f"trigger_summary={result.trigger_summary_path}")
-    print(f"branch_compare={result.branch_compare_path}")
+    print(f"compare={result.compare_path}")
+    print(f"decomposition={result.decomposition_path}")
     return 0
 
 
