@@ -233,34 +233,48 @@ def _candidate_frame_for_trade_date_from_context(
         day_bar = ctx["day_bar"]
         open_d = float(day_bar["open"])
         close_prev = float(ctx["close_D-1"])
-        regime_label = "regime_b_open_at_or_below_prev_close" if open_d <= close_prev else "regime_a_open_above_prev_close"
+        regime_label = (
+            "regime_b_open_at_or_below_prev_close" if open_d <= close_prev else "regime_a_open_above_prev_close"
+        )
         first5_open = agg["first5_open"]
         first5_high = agg["first5_high"]
         first5_low = agg["first5_low"]
         first5_close = agg["first5_close"]
         first5_range = first5_high - first5_low
         first5_range_pos = (first5_close - first5_low) / first5_range if first5_range > 0 else None
-        first5_pace = (agg["first5_volume"] * 78.0) / float(ctx["avg_volume_20"]) if float(ctx["avg_volume_20"]) > 0 else None
+        first5_pace = (
+            (agg["first5_volume"] * 78.0) / float(ctx["avg_volume_20"]) if float(ctx["avg_volume_20"]) > 0 else None
+        )
         vwap = float(agg["vwap"])
         close_vs_vwap = (first5_close / vwap - 1.0) * 100.0 if vwap > 0 else None
         open_gap_vs_prev_close = (open_d - close_prev) / close_prev * 100.0 if close_prev > 0 else None
         first5_oc_ret = (first5_close - first5_open) / first5_open * 100.0 if first5_open > 0 else None
         continuation_gate = bool(
             regime_label == "regime_a_open_above_prev_close"
-            and open_gap_vs_prev_close is not None and open_gap_vs_prev_close >= cfg.day0.min_gap_today_pct
-            and first5_range_pos is not None and first5_range_pos >= cfg.day0.min_first5_range_pos
-            and first5_oc_ret is not None and first5_oc_ret >= cfg.day0.min_first5_oc_ret
-            and first5_pace is not None and first5_pace >= cfg.day0.min_first5_pace
-            and close_vs_vwap is not None and close_vs_vwap >= (cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
+            and open_gap_vs_prev_close is not None
+            and open_gap_vs_prev_close >= cfg.day0.min_gap_today_pct
+            and first5_range_pos is not None
+            and first5_range_pos >= cfg.day0.min_first5_range_pos
+            and first5_oc_ret is not None
+            and first5_oc_ret >= cfg.day0.min_first5_oc_ret
+            and first5_pace is not None
+            and first5_pace >= cfg.day0.min_first5_pace
+            and close_vs_vwap is not None
+            and close_vs_vwap >= (cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
         )
         reclaim_gate = bool(
             regime_label == "regime_b_open_at_or_below_prev_close"
-            and close_vs_vwap is not None and close_vs_vwap >= 0.0
-            and first5_range_pos is not None and first5_range_pos >= 0.50
-            and first5_pace is not None and first5_pace >= 1.0
+            and close_vs_vwap is not None
+            and close_vs_vwap >= 0.0
+            and first5_range_pos is not None
+            and first5_range_pos >= 0.50
+            and first5_pace is not None
+            and first5_pace >= 1.0
         )
         first_vwap_row = _entry_row_for_vwap(minute_rows_with_vwap) if reclaim_gate else None
-        first5_high_row = _entry_row_for_level(minute_rows, first5_high) if (reclaim_gate or continuation_gate) else None
+        first5_high_row = (
+            _entry_row_for_level(minute_rows, first5_high) if (reclaim_gate or continuation_gate) else None
+        )
         rows.append(
             {
                 "symbol": symbol,
@@ -277,10 +291,16 @@ def _candidate_frame_for_trade_date_from_context(
                 "close_vs_vwap": close_vs_vwap,
                 "continuation_gate": continuation_gate,
                 "reclaim_gate": reclaim_gate,
-                "reclaim_first5_high_trigger_time": first5_high_row["ts"].isoformat() if (first5_high_row and reclaim_gate and regime_label == "regime_b_open_at_or_below_prev_close") else None,
+                "reclaim_first5_high_trigger_time": (
+                    first5_high_row["ts"].isoformat()
+                    if (first5_high_row and reclaim_gate and regime_label == "regime_b_open_at_or_below_prev_close")
+                    else None
+                ),
                 "reclaim_vwap_trigger_time": first_vwap_row["ts"].isoformat() if first_vwap_row else None,
                 "reclaim_vwap_trigger_price": float(first_vwap_row["intraday_vwap"]) if first_vwap_row else None,
-                "continuation_trigger_time": first5_high_row["ts"].isoformat() if (first5_high_row and continuation_gate) else None,
+                "continuation_trigger_time": (
+                    first5_high_row["ts"].isoformat() if (first5_high_row and continuation_gate) else None
+                ),
                 "avg_dollar_volume_20": float(ctx["avg_volume_20"]) * float(ctx["close_D-1"]),
                 "minute_rows": minute_rows,
             }
@@ -292,7 +312,9 @@ def _candidate_frame_for_trade_date(trade_date: date, cfg: StrategyConfig) -> pd
     _, client = load_alpaca_client()
     universe = load_seed_symbols()
     daily_df = _build_daily_frame(universe, trade_date, trade_date)
-    grouped_daily = {symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")}
+    grouped_daily = {
+        symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")
+    }
     profiles_df = _build_symbol_profiles(universe, set(universe), reports_dir() / "symbol_profiles_cache.csv")
     profiles_map = {row["symbol"]: row for row in profiles_df.to_dict(orient="records")}
     return _candidate_frame_for_trade_date_from_context(
@@ -329,7 +351,11 @@ def _candidate_frame_from_scanner_csv(path: Path, cfg: StrategyConfig) -> pd.Dat
         first5_pace = pd.to_numeric(rec.get("first5_pace"), errors="coerce")
         if pd.isna(open_d) or pd.isna(close_prev) or pd.isna(first5_high) or pd.isna(first5_low):
             continue
-        regime_label = "regime_b_open_at_or_below_prev_close" if float(open_d) <= float(close_prev) else "regime_a_open_above_prev_close"
+        regime_label = (
+            "regime_b_open_at_or_below_prev_close"
+            if float(open_d) <= float(close_prev)
+            else "regime_a_open_above_prev_close"
+        )
         close_vs_vwap = None
         if pd.notna(first5_close) and pd.notna(vwap) and float(vwap) > 0:
             close_vs_vwap = (float(first5_close) / float(vwap) - 1.0) * 100.0
@@ -337,9 +363,12 @@ def _candidate_frame_from_scanner_csv(path: Path, cfg: StrategyConfig) -> pd.Dat
         first_vwap_row = _entry_row_for_vwap(minute_rows_with_vwap)
         reclaim_gate = bool(
             regime_label == "regime_b_open_at_or_below_prev_close"
-            and close_vs_vwap is not None and close_vs_vwap >= 0.0
-            and pd.notna(first5_range_pos) and float(first5_range_pos) >= 0.50
-            and pd.notna(first5_pace) and float(first5_pace) >= 1.0
+            and close_vs_vwap is not None
+            and close_vs_vwap >= 0.0
+            and pd.notna(first5_range_pos)
+            and float(first5_range_pos) >= 0.50
+            and pd.notna(first5_pace)
+            and float(first5_pace) >= 1.0
         )
         continuation_gate = bool(rec.get("pass")) and regime_label == "regime_a_open_above_prev_close"
         avg_dollar_volume_20 = None
@@ -362,10 +391,16 @@ def _candidate_frame_from_scanner_csv(path: Path, cfg: StrategyConfig) -> pd.Dat
                 "close_vs_vwap": close_vs_vwap,
                 "continuation_gate": continuation_gate,
                 "reclaim_gate": reclaim_gate,
-                "reclaim_first5_high_trigger_time": first5_high_row["ts"].isoformat() if (first5_high_row and reclaim_gate and regime_label == "regime_b_open_at_or_below_prev_close") else None,
+                "reclaim_first5_high_trigger_time": (
+                    first5_high_row["ts"].isoformat()
+                    if (first5_high_row and reclaim_gate and regime_label == "regime_b_open_at_or_below_prev_close")
+                    else None
+                ),
                 "reclaim_vwap_trigger_time": first_vwap_row["ts"].isoformat() if first_vwap_row else None,
                 "reclaim_vwap_trigger_price": float(first_vwap_row["intraday_vwap"]) if first_vwap_row else None,
-                "continuation_trigger_time": first5_high_row["ts"].isoformat() if (first5_high_row and continuation_gate) else None,
+                "continuation_trigger_time": (
+                    first5_high_row["ts"].isoformat() if (first5_high_row and continuation_gate) else None
+                ),
                 "avg_dollar_volume_20": avg_dollar_volume_20,
                 "minute_rows": minute_rows,
             }
@@ -458,7 +493,9 @@ def _execute_branch_on_candidates(
         close_vs_vwap = pd.to_numeric(rec.get("close_vs_vwap"), errors="coerce")
         if branch == "continuation_compare":
             regime_ok = regime_label == "regime_a_open_above_prev_close"
-            vwap_ok = pd.notna(close_vs_vwap) and float(close_vs_vwap) >= (cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
+            vwap_ok = (
+                pd.notna(close_vs_vwap) and float(close_vs_vwap) >= (cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
+            )
             range_ok = pd.notna(first5_range_pos) and float(first5_range_pos) >= cfg.day0.min_first5_range_pos
             pace_ok = pd.notna(first5_pace) and float(first5_pace) >= cfg.day0.min_first5_pace
             gate_ok = bool(rec["continuation_gate"])
@@ -555,9 +592,7 @@ def _execute_branch_on_candidates(
             continue
 
         raw_entry_price = (
-            float(rec["reclaim_vwap_trigger_price"])
-            if branch == "reclaim_vwap"
-            else float(rec["first5_high"])
+            float(rec["reclaim_vwap_trigger_price"]) if branch == "reclaim_vwap" else float(rec["first5_high"])
         )
         stop_price = float(rec["first5_low"])
         liquidity_bucket = _liquidity_bucket(float(rec.get("avg_dollar_volume_20") or 0.0))
@@ -720,8 +755,12 @@ def _execute_branch_on_candidates(
         "entries": entries,
         "exits": exits,
         "closed_trades": int(branch_df["closed_trades"].fillna(0).sum()) if not branch_df.empty else 0,
-        "realized_pnl_usd": float(pd.to_numeric(branch_df["realized_pnl_usd"], errors="coerce").sum()) if not branch_df.empty else 0.0,
-        "realized_pnl_pct": float(pd.to_numeric(branch_df["realized_pnl_pct"], errors="coerce").mean()) if not branch_df.empty else None,
+        "realized_pnl_usd": (
+            float(pd.to_numeric(branch_df["realized_pnl_usd"], errors="coerce").sum()) if not branch_df.empty else 0.0
+        ),
+        "realized_pnl_pct": (
+            float(pd.to_numeric(branch_df["realized_pnl_pct"], errors="coerce").mean()) if not branch_df.empty else None
+        ),
         "exit_reason_breakdown": dict(exit_breakdown),
     }
     return branch_df, meta
@@ -821,7 +860,9 @@ def replay_reclaim_executor_period(
     start_date = trade_dates[0]
     universe = load_seed_symbols()
     daily_df = _build_daily_frame(universe, start_date, actual_end_date)
-    grouped_daily = {symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")}
+    grouped_daily = {
+        symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")
+    }
     profiles_df = _build_symbol_profiles(universe, set(universe), reports_dir() / "symbol_profiles_cache.csv")
     profiles_map = {row["symbol"]: row for row in profiles_df.to_dict(orient="records")}
     logger, log_path = build_strategy_logger("gap_d1_0935_reclaim_executor_period", "reclaim_executor_period")
@@ -918,8 +959,12 @@ def replay_reclaim_executor_period(
         compare_df.to_csv(compare_path, index=False)
         daily_df_out.to_csv(daily_path, index=False)
         summary_df.to_csv(summary_path, index=False)
-        pd.DataFrame(columns=["trade_date", "branch", "gate_fail_reason", "count"]).to_csv(gate_fail_daily_path, index=False)
-        pd.DataFrame(columns=["trade_date", "branch", "symbol", "gate_fail_reason", "skip_reason"]).to_csv(gate_fail_symbol_path, index=False)
+        pd.DataFrame(columns=["trade_date", "branch", "gate_fail_reason", "count"]).to_csv(
+            gate_fail_daily_path, index=False
+        )
+        pd.DataFrame(columns=["trade_date", "branch", "symbol", "gate_fail_reason", "skip_reason"]).to_csv(
+            gate_fail_symbol_path, index=False
+        )
         log_event(
             logger,
             "reclaim_executor_period_complete",
@@ -960,7 +1005,10 @@ def replay_reclaim_executor_period(
             avg_hold_min=("avg_hold_min", "mean"),
             no_trigger_count=("skip_reason", lambda s: int((pd.Series(s).fillna("") == "no_trigger").sum())),
             invalid_risk_count=("skip_reason", lambda s: int((pd.Series(s).fillna("") == "invalid_risk").sum())),
-            entry_window_closed_count=("skip_reason", lambda s: int((pd.Series(s).fillna("") == "entry_window_closed").sum())),
+            entry_window_closed_count=(
+                "skip_reason",
+                lambda s: int((pd.Series(s).fillna("") == "entry_window_closed").sum()),
+            ),
         )
         .reset_index()
     )
@@ -972,7 +1020,9 @@ def replay_reclaim_executor_period(
         .reset_index()
     )
     if not exit_counts.empty:
-        exit_counts = exit_counts.rename(columns={col: f"exit_reason_{col}" for col in exit_counts.columns if col not in {"trade_date", "branch"}})
+        exit_counts = exit_counts.rename(
+            columns={col: f"exit_reason_{col}" for col in exit_counts.columns if col not in {"trade_date", "branch"}}
+        )
         daily_df_out = daily_df_out.merge(exit_counts, on=["trade_date", "branch"], how="left")
     summary_df = (
         daily_df_out.groupby("branch", dropna=False)
@@ -995,11 +1045,13 @@ def replay_reclaim_executor_period(
     )
     exit_cols = [col for col in daily_df_out.columns if col.startswith("exit_reason_")]
     if exit_cols:
-        summary_df = summary_df.merge(daily_df_out.groupby("branch", dropna=False)[exit_cols].sum().reset_index(), on="branch", how="left")
+        summary_df = summary_df.merge(
+            daily_df_out.groupby("branch", dropna=False)[exit_cols].sum().reset_index(), on="branch", how="left"
+        )
 
-    gate_fail_symbol_df = compare_df[
-        compare_df["gate_fail_reason"].fillna("").ne("") & compare_df["symbol"].notna()
-    ][["trade_date", "branch", "symbol", "gate_fail_reason", "skip_reason"]].copy()
+    gate_fail_symbol_df = compare_df[compare_df["gate_fail_reason"].fillna("").ne("") & compare_df["symbol"].notna()][
+        ["trade_date", "branch", "symbol", "gate_fail_reason", "skip_reason"]
+    ].copy()
     gate_fail_daily_rows: List[Dict[str, Any]] = []
     if not gate_fail_symbol_df.empty:
         for rec in gate_fail_symbol_df.to_dict(orient="records"):

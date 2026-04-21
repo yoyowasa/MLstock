@@ -196,7 +196,9 @@ def backtest_reclaim_branch(
     actual_fee_bps = float(strategy_cfg.cost.fee_bps_round_trip if fee_bps_round_trip is None else fee_bps_round_trip)
     universe = load_seed_symbols()
     daily_df = _build_daily_frame(universe, start_date, actual_end_date)
-    grouped_daily = {symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")}
+    grouped_daily = {
+        symbol: frame.sort_values("date").reset_index(drop=True) for symbol, frame in daily_df.groupby("symbol")
+    }
     profiles_df = _build_symbol_profiles(universe, set(universe), reports_dir() / "symbol_profiles_cache.csv")
     profiles_map = {row["symbol"]: row for row in profiles_df.to_dict(orient="records")}
 
@@ -251,12 +253,18 @@ def backtest_reclaim_branch(
             first5_range = first5_high - first5_low
             first5_range_pos = (first5_close - first5_low) / first5_range if first5_range > 0 else None
             first5_oc_ret = (first5_close - first5_open) / first5_open * 100.0 if first5_open > 0 else None
-            first5_pace = (agg["first5_volume"] * 78.0) / float(ctx["avg_volume_20"]) if float(ctx["avg_volume_20"]) > 0 else None
+            first5_pace = (
+                (agg["first5_volume"] * 78.0) / float(ctx["avg_volume_20"]) if float(ctx["avg_volume_20"]) > 0 else None
+            )
             close_vs_vwap = (first5_close / agg["vwap"] - 1.0) * 100.0 if agg["vwap"] > 0 else None
             stop_price = first5_low
             avg_dollar_volume_20 = float(ctx["avg_volume_20"]) * float(ctx["close_D-1"])
             liquidity_bucket = _liquidity_bucket(avg_dollar_volume_20)
-            applied_slippage_bps = _slippage_bps_for_bucket(strategy_cfg, liquidity_bucket) if slippage_bps_per_side is None else float(slippage_bps_per_side)
+            applied_slippage_bps = (
+                _slippage_bps_for_bucket(strategy_cfg, liquidity_bucket)
+                if slippage_bps_per_side is None
+                else float(slippage_bps_per_side)
+            )
             market_cap_bucket = str(profile.get("market_cap_bucket") or "unknown")
             sector = str(profile.get("sector") or "")
             year_label = str(trade_date.year)
@@ -264,26 +272,43 @@ def backtest_reclaim_branch(
 
             reclaim_gate = bool(
                 regime_b
-                and close_vs_vwap is not None and close_vs_vwap >= 0.0
-                and first5_range_pos is not None and first5_range_pos >= 0.50
-                and first5_pace is not None and first5_pace >= 1.0
+                and close_vs_vwap is not None
+                and close_vs_vwap >= 0.0
+                and first5_range_pos is not None
+                and first5_range_pos >= 0.50
+                and first5_pace is not None
+                and first5_pace >= 1.0
             )
             continuation_gate = bool(
                 regime_a
                 and (open_d - close_prev) / close_prev * 100.0 >= strategy_cfg.day0.min_gap_today_pct
-                and first5_range_pos is not None and first5_range_pos >= strategy_cfg.day0.min_first5_range_pos
-                and first5_oc_ret is not None and first5_oc_ret >= strategy_cfg.day0.min_first5_oc_ret
-                and first5_pace is not None and first5_pace >= strategy_cfg.day0.min_first5_pace
-                and close_vs_vwap is not None and close_vs_vwap >= (strategy_cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
+                and first5_range_pos is not None
+                and first5_range_pos >= strategy_cfg.day0.min_first5_range_pos
+                and first5_oc_ret is not None
+                and first5_oc_ret >= strategy_cfg.day0.min_first5_oc_ret
+                and first5_pace is not None
+                and first5_pace >= strategy_cfg.day0.min_first5_pace
+                and close_vs_vwap is not None
+                and close_vs_vwap >= (strategy_cfg.day0.min_close_vs_vwap_ratio - 1.0) * 100.0
             )
 
             branch_specs = []
             if reclaim_gate:
-                branch_specs.append(("reclaim_first5_high", _entry_row_for_level(minute_rows, first5_high), first5_high))
+                branch_specs.append(
+                    ("reclaim_first5_high", _entry_row_for_level(minute_rows, first5_high), first5_high)
+                )
                 first_vwap_row = _entry_row_for_vwap(minute_rows_with_vwap)
-                branch_specs.append(("reclaim_vwap", first_vwap_row, float(first_vwap_row["intraday_vwap"]) if first_vwap_row is not None else None))
+                branch_specs.append(
+                    (
+                        "reclaim_vwap",
+                        first_vwap_row,
+                        float(first_vwap_row["intraday_vwap"]) if first_vwap_row is not None else None,
+                    )
+                )
             if continuation_gate:
-                branch_specs.append(("continuation_compare", _entry_row_for_level(minute_rows, first5_high), first5_high))
+                branch_specs.append(
+                    ("continuation_compare", _entry_row_for_level(minute_rows, first5_high), first5_high)
+                )
 
             for branch_label, entry_row, entry_price in branch_specs:
                 trade = _simulate_trade(
@@ -301,7 +326,9 @@ def backtest_reclaim_branch(
                         "trade_date": trade_date.isoformat(),
                         "symbol": symbol,
                         "branch_label": branch_label,
-                        "regime_label": "regime_b_open_at_or_below_prev_close" if regime_b else "regime_a_open_above_prev_close",
+                        "regime_label": (
+                            "regime_b_open_at_or_below_prev_close" if regime_b else "regime_a_open_above_prev_close"
+                        ),
                         "entry_time": trade["entry_time"],
                         "entry_price": trade["entry_price"],
                         "stop_price": stop_price,
@@ -344,7 +371,9 @@ def backtest_reclaim_branch(
     for branch_label, branch_df in trades_df.groupby("branch_label"):
         summary_rows.append(_summarize_branch(branch_df, branch_label))
     summary_df = pd.DataFrame(summary_rows).sort_values("branch_label").reset_index(drop=True)
-    compare_df = summary_df[summary_df["branch_label"].isin(["reclaim_first5_high", "reclaim_vwap", "continuation_compare"])].copy()
+    compare_df = summary_df[
+        summary_df["branch_label"].isin(["reclaim_first5_high", "reclaim_vwap", "continuation_compare"])
+    ].copy()
     decomposition_rows = []
     for dimension in ["calendar_year", "quarter_label", "sector", "price_bucket", "market_cap_bucket"]:
         grouped = (

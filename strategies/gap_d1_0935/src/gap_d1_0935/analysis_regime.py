@@ -321,11 +321,15 @@ def analyze_watchlist_regime(
             )
             stop_price = first5_low if first5_low is not None else None
             prev_close_entry_row = _first_reclaim_row(minute_rows, close_prev) if reclaim_v01_gate else None
-            first5_high_entry_row = _first_reclaim_row(minute_rows, first5_high) if (reclaim_v01_gate and first5_high is not None) else None
+            first5_high_entry_row = (
+                _first_reclaim_row(minute_rows, first5_high) if (reclaim_v01_gate and first5_high is not None) else None
+            )
             vwap_entry_row = None
             if reclaim_v01_gate:
                 for row in minute_rows_with_vwap:
-                    if ((row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35)) and row["high"] >= row["intraday_vwap"]:
+                    if ((row["ts"].hour > 9) or (row["ts"].hour == 9 and row["ts"].minute >= 35)) and row[
+                        "high"
+                    ] >= row["intraday_vwap"]:
                         vwap_entry_row = row
                         break
             prev_close_trade = _simulate_trade_from_entry(
@@ -423,9 +427,27 @@ def analyze_watchlist_regime(
     reclaim_gate_df = detail_df[detail_df["reclaim_v01_gate"].fillna(False)].copy()
     trigger_rows = []
     for label, ret_col, win_col, high_col, low_col in [
-        ("prev_close_reclaim", "prev_close_reclaim_trade_ret", "prev_close_reclaim_win", "prev_close_reclaim_high_ret_from_entry_proxy", "prev_close_reclaim_low_ret_from_entry_proxy"),
-        ("vwap_reclaim", "vwap_reclaim_trade_ret", "vwap_reclaim_win", "vwap_reclaim_high_ret_from_entry_proxy", "vwap_reclaim_low_ret_from_entry_proxy"),
-        ("first5_high_reclaim", "first5_high_reclaim_trade_ret", "first5_high_reclaim_win", "first5_high_reclaim_high_ret_from_entry_proxy", "first5_high_reclaim_low_ret_from_entry_proxy"),
+        (
+            "prev_close_reclaim",
+            "prev_close_reclaim_trade_ret",
+            "prev_close_reclaim_win",
+            "prev_close_reclaim_high_ret_from_entry_proxy",
+            "prev_close_reclaim_low_ret_from_entry_proxy",
+        ),
+        (
+            "vwap_reclaim",
+            "vwap_reclaim_trade_ret",
+            "vwap_reclaim_win",
+            "vwap_reclaim_high_ret_from_entry_proxy",
+            "vwap_reclaim_low_ret_from_entry_proxy",
+        ),
+        (
+            "first5_high_reclaim",
+            "first5_high_reclaim_trade_ret",
+            "first5_high_reclaim_win",
+            "first5_high_reclaim_high_ret_from_entry_proxy",
+            "first5_high_reclaim_low_ret_from_entry_proxy",
+        ),
     ]:
         subset = reclaim_gate_df[reclaim_gate_df[ret_col].notna()].copy()
         trigger_rows.append(
@@ -443,9 +465,33 @@ def analyze_watchlist_regime(
 
     branch_rows = []
     for label, source_df, mask_col, ret_col, win_col, high_col, low_col in [
-        ("reclaim_v01_prev_close", reclaim_gate_df, "prev_close_reclaim_trade_ret", "prev_close_reclaim_trade_ret", "prev_close_reclaim_win", "prev_close_reclaim_high_ret_from_entry_proxy", "prev_close_reclaim_low_ret_from_entry_proxy"),
-        ("reclaim_v01_first5_high", reclaim_gate_df, "first5_high_reclaim_trade_ret", "first5_high_reclaim_trade_ret", "first5_high_reclaim_win", "first5_high_reclaim_high_ret_from_entry_proxy", "first5_high_reclaim_low_ret_from_entry_proxy"),
-        ("continuation_compare", detail_df[detail_df["continuation_pass"].fillna(False)].copy(), "continuation_compare_trade_ret", "continuation_compare_trade_ret", "continuation_compare_win", "continuation_compare_high_ret_from_entry_proxy", "continuation_compare_low_ret_from_entry_proxy"),
+        (
+            "reclaim_v01_prev_close",
+            reclaim_gate_df,
+            "prev_close_reclaim_trade_ret",
+            "prev_close_reclaim_trade_ret",
+            "prev_close_reclaim_win",
+            "prev_close_reclaim_high_ret_from_entry_proxy",
+            "prev_close_reclaim_low_ret_from_entry_proxy",
+        ),
+        (
+            "reclaim_v01_first5_high",
+            reclaim_gate_df,
+            "first5_high_reclaim_trade_ret",
+            "first5_high_reclaim_trade_ret",
+            "first5_high_reclaim_win",
+            "first5_high_reclaim_high_ret_from_entry_proxy",
+            "first5_high_reclaim_low_ret_from_entry_proxy",
+        ),
+        (
+            "continuation_compare",
+            detail_df[detail_df["continuation_pass"].fillna(False)].copy(),
+            "continuation_compare_trade_ret",
+            "continuation_compare_trade_ret",
+            "continuation_compare_win",
+            "continuation_compare_high_ret_from_entry_proxy",
+            "continuation_compare_low_ret_from_entry_proxy",
+        ),
     ]:
         subset = source_df[source_df[mask_col].notna()].copy()
         branch_rows.append(
